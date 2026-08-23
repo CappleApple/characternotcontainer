@@ -54,7 +54,7 @@ Example:
 ```json
 {
   "attribute": "minecraft:generic.movement_speed",
-  "name": "Movement Speed",
+  "name": "",
   "icon": "",
   "format": "CUSTOM",
   "decimalPlaces": 0,
@@ -65,6 +65,8 @@ Example:
   "suffix": "%"
 }
 ```
+
+Leave `name` blank to use the attribute's localized display name. If the attribute has no translation, the registry ID is converted into a readable name (for example, `minecraft:generic.movement_speed` becomes `Movement Speed`). A nonblank JSON `name` always takes priority.
 
 Run `/characterui attributes` to log registered attribute IDs. Operators can run `/characterui reload` after editing `general.json` or `stats.json`; the equipment layout is re-read whenever the screen opens.
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1 - 2026-08-22
+
+### Changed
+
+- Changed attribute labels to prefer explicit JSON names, then localized attribute names, then readable parsed registry IDs.
+
 ## 1.0 - 2026-08-22
 
 ### Added

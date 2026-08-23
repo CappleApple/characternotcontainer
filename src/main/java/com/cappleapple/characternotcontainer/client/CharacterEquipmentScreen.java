@@ -337,8 +337,8 @@ public final class CharacterEquipmentScreen extends Screen {
             int y = viewport.y() + (row - statsScroll) * rowHeight;
             ScreenRect rowRect = new ScreenRect(viewport.x(), y, viewport.width(), rowHeight);
             if (rowRect.contains(mouseX, mouseY)) graphics.fill(rowRect.x(), rowRect.y(), rowRect.x() + rowRect.width(), rowRect.y() + rowRect.height(), 0x553F4852);
-            renderAttributeIcon(graphics, changedStat.stat.definition(), viewport.x() + scaled(4), y + Math.max(2, (rowHeight - 16) / 2));
-            String name = displayName(changedStat.stat.definition());
+            renderAttributeIcon(graphics, changedStat.stat, viewport.x() + scaled(4), y + Math.max(2, (rowHeight - 16) / 2));
+            String name = displayName(changedStat.stat);
             int nameX = viewport.x() + scaled(25);
             int deltaRight = viewport.x() + viewport.width() - scaled(4);
             String delta = formattedChange(changedStat);
@@ -373,7 +373,7 @@ public final class CharacterEquipmentScreen extends Screen {
                 .filter(instance -> !configuredAttributes.contains(instance.getAttribute()))
                 .filter(instance -> Math.abs(instance.getValue() - instance.getBaseValue()) > 0.0000001D)
                 .map(instance -> changedStat(automaticStat(instance), instance, false))
-                .sorted(Comparator.comparing(stat -> displayName(stat.stat.definition()), String.CASE_INSENSITIVE_ORDER))
+                .sorted(Comparator.comparing(stat -> displayName(stat.stat), String.CASE_INSENSITIVE_ORDER))
                 .forEach(result::add);
         return result;
     }
@@ -422,10 +422,8 @@ public final class CharacterEquipmentScreen extends Screen {
         Holder<Attribute> attribute = instance.getAttribute();
         ResourceLocation id = BuiltInRegistries.ATTRIBUTE.getKey(attribute.value());
         String attributeId = id == null ? attribute.value().getDescriptionId() : id.toString();
-        String descriptionId = attribute.value().getDescriptionId();
-        String name = Component.translatable(descriptionId).getString();
-        if (name.equals(descriptionId)) name = id == null ? titleCase(attributeId) : titleCasePath(id.getPath());
-        return new ResolvedStat(new StatDefinition(attributeId, name, com.cappleapple.characternotcontainer.config.StatFormat.DECIMAL, 2), attribute);
+        return new ResolvedStat(new StatDefinition(attributeId, "",
+                com.cappleapple.characternotcontainer.config.StatFormat.DECIMAL, 2), attribute);
     }
 
     private List<Contribution> equipmentContributions(ResolvedStat stat) {
@@ -512,7 +510,8 @@ public final class CharacterEquipmentScreen extends Screen {
         return lines;
     }
 
-    private void renderAttributeIcon(GuiGraphics graphics, StatDefinition definition, int x, int y) {
+    private void renderAttributeIcon(GuiGraphics graphics, ResolvedStat stat, int x, int y) {
+        StatDefinition definition = stat.definition();
         ResourceLocation icon = definition.icon == null || definition.icon.isBlank() ? null : ResourceLocation.tryParse(definition.icon);
         if (icon != null) {
             graphics.blitSprite(icon, x, y, 16, 16);
@@ -520,7 +519,7 @@ public final class CharacterEquipmentScreen extends Screen {
         }
         graphics.fill(x, y, x + 16, y + 16, 0xFF343B43);
         outline(graphics, new ScreenRect(x, y, 16, 16), 0xFF69737E);
-        String fallback = displayName(definition).substring(0, 1).toUpperCase(Locale.ROOT);
+        String fallback = displayName(stat).substring(0, 1).toUpperCase(Locale.ROOT);
         graphics.drawCenteredString(font, fallback, x + 8, y + 4, 0xFFCDD4DA);
     }
 
@@ -762,26 +761,15 @@ public final class CharacterEquipmentScreen extends Screen {
         return Component.translatable("slot.characternotcontainer." + slot.getName());
     }
 
-    private static String displayName(StatDefinition definition) {
-        return definition.name == null || definition.name.isBlank() ? definition.attribute : definition.name;
+    private static String displayName(ResolvedStat stat) {
+        String translationKey = stat.attribute().value().getDescriptionId();
+        return AttributeDisplayName.resolve(stat.definition().name, translationKey, stat.definition().attribute,
+                key -> Component.translatable(key).getString());
     }
 
     private static String titleCase(String value) {
         if (value == null || value.isBlank()) return "Curio";
         return Character.toUpperCase(value.charAt(0)) + value.substring(1).replace('_', ' ');
-    }
-
-    private static String titleCasePath(String path) {
-        int separator = Math.max(path.lastIndexOf('.'), path.lastIndexOf('/'));
-        String value = separator >= 0 ? path.substring(separator + 1) : path;
-        String[] words = value.replace('-', '_').split("_");
-        StringBuilder result = new StringBuilder();
-        for (String word : words) {
-            if (word.isEmpty()) continue;
-            if (!result.isEmpty()) result.append(' ');
-            result.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
-        }
-        return result.isEmpty() ? value : result.toString();
     }
 
     private static List<String> aliases(EquipmentScreenSpec.Widget anchor) {
