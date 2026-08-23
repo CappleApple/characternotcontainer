@@ -1,0 +1,158 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'net.neoforged.moddev' version '2.0.143'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+repositories {
+    maven {
+        name = 'Curios'
+        url = uri('https://maven.theillusivec4.top/')
+    }
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = 'Modrinth'
+                url = uri('https://api.modrinth.com/maven')
+            }
+        }
+        filter {
+            includeGroup 'maven.modrinth'
+        }
+    }
+}
+
+neoForge {
+    version = project.neo_version
+
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+
+    runs {
+        client {
+            client()
+        }
+        server {
+            server()
+            programArgument '--nogui'
+        }
+        gameTestServer {
+            type = 'gameTestServer'
+        }
+        configureEach {
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            logLevel = org.slf4j.event.Level.INFO
+        }
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet sourceSets.main
+        }
+    }
+
+    unitTest {
+        enable()
+        testedMod = mods."${mod_id}"
+    }
+}
+
+configurations {
+    runtimeClasspath.extendsFrom localRuntime
+}
+
+dependencies {
+    // The public API exposes capability access but not Curios' server-authoritative menu
+    // opener/screen. The full artifact is compile-only and every reference stays in the
+    // guarded compat package so Curios remains genuinely optional at runtime.
+    compileOnly "top.theillusivec4.curios:curios-neoforge:${curios_version}"
+    if (!project.hasProperty('skipCuriosRuntime')) {
+        localRuntime "top.theillusivec4.curios:curios-neoforge:${curios_version}"
+        // A content mod is development-only so the dynamic Curios anchors can be
+        // exercised with real slot assignments and items. It is never packaged.
+        localRuntime "maven.modrinth:P0Mu4wcQ:rGPw090r"
+    }
+    if (!project.hasProperty('skipSophisticatedStorageRuntime')) {
+        // Development-only compatibility coverage for generic NeoForge item
+        // handlers. Neither Sophisticated mod is packaged in the release JAR.
+        localRuntime "maven.modrinth:nmoqTijg:${sophisticated_core_version}"
+        localRuntime "maven.modrinth:hMlaZH8f:${sophisticated_storage_version}"
+    }
+
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+}
+
+def generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+    def replaceProperties = [
+        minecraft_version: minecraft_version,
+        minecraft_version_range: minecraft_version_range,
+        neo_version: neo_version,
+        loader_version_range: loader_version_range,
+        mod_id: mod_id,
+        mod_name: mod_name,
+        mod_license: mod_license,
+        mod_version: mod_version,
+        curios_version_range: curios_version_range
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from 'src/main/templates'
+    into 'build/generated/sources/modMetadata'
+}
+
+sourceSets.main.resources.srcDir generateModMetadata
+neoForge.ideSyncTask generateModMetadata
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+def releaseJar = tasks.named('jar', Jar).flatMap { it.archiveFile }
+tasks.register('verifyReleaseJarContents') {
+    dependsOn tasks.named('jar')
+    inputs.file(releaseJar)
+    doLast {
+        def jarFile = releaseJar.get().asFile
+        def zip = new java.util.zip.ZipFile(jarFile)
+        try {
+            ['META-INF/neoforge.mods.toml', 'assets/characternotcontainer/lang/en_us.json',
+             'assets/characternotcontainer/ui/equipment_screen.json'].each {
+                if (zip.getEntry(it) == null) throw new GradleException("Missing required JAR entry: ${it}")
+            }
+            def layoutEntry = zip.getEntry('assets/characternotcontainer/ui/equipment_screen.json')
+            def digest = java.security.MessageDigest.getInstance('SHA-256')
+            zip.getInputStream(layoutEntry).withCloseable { stream ->
+                byte[] buffer = new byte[8192]
+                for (int read = stream.read(buffer); read >= 0; read = stream.read(buffer)) {
+                    if (read > 0) digest.update(buffer, 0, read)
+                }
+            }
+            def actualHash = new BigInteger(1, digest.digest()).toString(16).padLeft(64, '0').toUpperCase(Locale.ROOT)
+            def expectedHash = 'EC3A339553DF5B6ACE5564371AE8110749D92C2ADFD637E9587D3A5A2418D887'
+            if (actualHash != expectedHash) throw new GradleException("Bundled equipment layout differs from the supplied JSON: ${actualHash}")
+        } finally {
+            zip.close()
+        }
+    }
+}
+
+tasks.named('check').configure {
+    dependsOn tasks.named('verifyReleaseJarContents')
+}

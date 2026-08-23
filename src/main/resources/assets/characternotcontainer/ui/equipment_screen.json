@@ -1,0 +1,420 @@
+{
+  "id": "character_not_container_equipment_screen_example",
+  "modId": "characternotcontainer",
+  "width": 400,
+  "height": 320,
+  "widgets": [
+    {
+      "id": "screen_background",
+      "type": "panel",
+      "x": 0,
+      "y": 0,
+      "w": 400,
+      "h": 320,
+      "text": "",
+      "icon": null,
+      "props": {
+        "style": "default"
+      }
+    },
+    {
+      "id": "stats_background",
+      "type": "panel",
+      "x": 10,
+      "y": 12,
+      "w": 150,
+      "h": 296,
+      "text": "",
+      "icon": null,
+      "props": {
+        "style": "dark"
+      }
+    },
+    {
+      "id": "stats_title",
+      "type": "label",
+      "x": 18,
+      "y": 19,
+      "w": 132,
+      "h": 12,
+      "text": "ATTRIBUTE CHANGES",
+      "icon": null,
+      "props": {
+        "color": "16777215",
+        "shadow": "true",
+        "align": "left",
+        "valign": "middle"
+      }
+    },
+    {
+      "id": "stats_list",
+      "type": "list",
+      "x": 16,
+      "y": 38,
+      "w": 134,
+      "h": 258,
+      "text": "",
+      "icon": null,
+      "props": {
+        "item_height": "26",
+        "runtime_source": "changed_attributes_only",
+        "base_definition": "attribute_instance_base_value",
+        "delta_definition": "effective_value_minus_base_value",
+        "tooltip_source_filter": "equipped_items_only",
+        "hide_unchanged": "true",
+        "show_tooltip_when_no_equipment_contributors": "false"
+      },
+      "item_template": [
+        {
+          "id": "attribute_icon",
+          "type": "sprite",
+          "x": 4,
+          "y": 5,
+          "w": 16,
+          "h": 16,
+          "text": "",
+          "icon": null,
+          "props": {
+            "src": "",
+            "fit": "contain",
+            "runtime_source": "attribute_icon_or_fallback"
+          }
+        },
+        {
+          "id": "attribute_name",
+          "type": "label",
+          "x": 25,
+          "y": 4,
+          "w": 75,
+          "h": 18,
+          "text": "Attribute",
+          "icon": null,
+          "props": {
+            "color": "16777215",
+            "shadow": "false",
+            "align": "left",
+            "valign": "middle",
+            "runtime_binding": "attribute_display_name"
+          }
+        },
+        {
+          "id": "attribute_delta",
+          "type": "label",
+          "x": 101,
+          "y": 4,
+          "w": 29,
+          "h": 18,
+          "text": "+0",
+          "icon": null,
+          "props": {
+            "color": "13684944",
+            "shadow": "false",
+            "align": "right",
+            "valign": "middle",
+            "runtime_binding": "formatted_delta"
+          }
+        }
+      ]
+    },
+    {
+      "id": "stats_scrollbar",
+      "type": "scrollbar",
+      "x": 150,
+      "y": 38,
+      "w": 8,
+      "h": 258,
+      "text": "",
+      "icon": null,
+      "props": {
+        "axis": "y",
+        "target": "stats_list"
+      }
+    },
+    {
+      "id": "player_preview_reference",
+      "type": "custom",
+      "x": 170,
+      "y": 12,
+      "w": 220,
+      "h": 296,
+      "text": "",
+      "icon": null,
+      "props": {
+        "customType": "character_not_container:player_preview",
+        "render": "vanilla_inventory_player_preview",
+        "follows_mouse": "true",
+        "background": "false",
+        "runtime_only": "true",
+        "note": "Use these bounds to position and scale the real LivingEntity preview."
+      }
+    },
+    {
+      "id": "equip_hitbox_head",
+      "type": "custom",
+      "x": 250,
+      "y": 35,
+      "w": 60,
+      "h": 52,
+      "text": "",
+      "icon": "minecraft:item/empty_armor_slot_helmet",
+      "props": {
+        "customType": "character_not_container:equipment_hitbox",
+        "slot_system": "vanilla",
+        "slot_id": "head",
+        "hitbox_render": "transparent",
+        "render_slot_icon": "true",
+        "slot_icon": "minecraft:item/empty_armor_slot_helmet",
+        "picker_source": "current_player_inventory",
+        "picker_filter": "items_valid_for_slot",
+        "click_region": "entire_widget_bounds"
+      },
+      "action": "open_equipment_picker"
+    },
+    {
+      "id": "equip_hitbox_chest",
+      "type": "custom",
+      "x": 224,
+      "y": 87,
+      "w": 112,
+      "h": 88,
+      "text": "",
+      "icon": "minecraft:item/empty_armor_slot_chestplate",
+      "props": {
+        "customType": "character_not_container:equipment_hitbox",
+        "slot_system": "vanilla",
+        "slot_id": "chest",
+        "hitbox_render": "transparent",
+        "render_slot_icon": "true",
+        "slot_icon": "minecraft:item/empty_armor_slot_chestplate",
+        "picker_source": "current_player_inventory",
+        "picker_filter": "items_valid_for_slot",
+        "click_region": "entire_widget_bounds"
+      },
+      "action": "open_equipment_picker"
+    },
+    {
+      "id": "equip_hitbox_legs",
+      "type": "custom",
+      "x": 241,
+      "y": 171,
+      "w": 78,
+      "h": 75,
+      "text": "",
+      "icon": "minecraft:item/empty_armor_slot_leggings",
+      "props": {
+        "customType": "character_not_container:equipment_hitbox",
+        "slot_system": "vanilla",
+        "slot_id": "legs",
+        "hitbox_render": "transparent",
+        "render_slot_icon": "true",
+        "slot_icon": "minecraft:item/empty_armor_slot_leggings",
+        "picker_source": "current_player_inventory",
+        "picker_filter": "items_valid_for_slot",
+        "click_region": "entire_widget_bounds"
+      },
+      "action": "open_equipment_picker"
+    },
+    {
+      "id": "equip_hitbox_feet",
+      "type": "custom",
+      "x": 241,
+      "y": 246,
+      "w": 78,
+      "h": 56,
+      "text": "",
+      "icon": "minecraft:item/empty_armor_slot_boots",
+      "props": {
+        "customType": "character_not_container:equipment_hitbox",
+        "slot_system": "vanilla",
+        "slot_id": "feet",
+        "hitbox_render": "transparent",
+        "render_slot_icon": "true",
+        "slot_icon": "minecraft:item/empty_armor_slot_boots",
+        "picker_source": "current_player_inventory",
+        "picker_filter": "items_valid_for_slot",
+        "click_region": "entire_widget_bounds"
+      },
+      "action": "open_equipment_picker"
+    },
+    {
+      "id": "curio_anchor_head",
+      "type": "custom",
+      "x": 319,
+      "y": 52,
+      "w": 18,
+      "h": 18,
+      "text": "",
+      "icon": null,
+      "props": {
+        "customType": "character_not_container:curio_anchor",
+        "semantic_anchor": "head",
+        "slot_type_aliases": "head,hat,face,mask",
+        "icon_source": "curios_slot_icon",
+        "tooltip": "curios_slot_display_name",
+        "dynamic": "true"
+      },
+      "action": "open_curio_picker"
+    },
+    {
+      "id": "curio_anchor_neck",
+      "type": "custom",
+      "x": 310,
+      "y": 92,
+      "w": 18,
+      "h": 18,
+      "text": "",
+      "icon": null,
+      "props": {
+        "customType": "character_not_container:curio_anchor",
+        "semantic_anchor": "neck",
+        "slot_type_aliases": "neck,necklace,amulet",
+        "icon_source": "curios_slot_icon",
+        "tooltip": "curios_slot_display_name",
+        "dynamic": "true"
+      },
+      "action": "open_curio_picker"
+    },
+    {
+      "id": "curio_anchor_back",
+      "type": "custom",
+      "x": 196,
+      "y": 108,
+      "w": 18,
+      "h": 18,
+      "text": "",
+      "icon": null,
+      "props": {
+        "customType": "character_not_container:curio_anchor",
+        "semantic_anchor": "back",
+        "slot_type_aliases": "back,cape,wings",
+        "icon_source": "curios_slot_icon",
+        "tooltip": "curios_slot_display_name",
+        "dynamic": "true"
+      },
+      "action": "open_curio_picker"
+    },
+    {
+      "id": "curio_anchor_belt",
+      "type": "custom",
+      "x": 321,
+      "y": 164,
+      "w": 18,
+      "h": 18,
+      "text": "",
+      "icon": null,
+      "props": {
+        "customType": "character_not_container:curio_anchor",
+        "semantic_anchor": "waist",
+        "slot_type_aliases": "belt,waist,body",
+        "icon_source": "curios_slot_icon",
+        "tooltip": "curios_slot_display_name",
+        "dynamic": "true"
+      },
+      "action": "open_curio_picker"
+    },
+    {
+      "id": "curio_anchor_left_hand",
+      "type": "custom",
+      "x": 199,
+      "y": 165,
+      "w": 18,
+      "h": 18,
+      "text": "",
+      "icon": null,
+      "props": {
+        "customType": "character_not_container:curio_anchor",
+        "semantic_anchor": "left_hand",
+        "slot_type_aliases": "ring,bracelet,hands,hand",
+        "instance_preference": "first_or_left",
+        "icon_source": "curios_slot_icon",
+        "tooltip": "curios_slot_display_name",
+        "dynamic": "true"
+      },
+      "action": "open_curio_picker"
+    },
+    {
+      "id": "curio_anchor_right_hand",
+      "type": "custom",
+      "x": 342,
+      "y": 165,
+      "w": 18,
+      "h": 18,
+      "text": "",
+      "icon": null,
+      "props": {
+        "customType": "character_not_container:curio_anchor",
+        "semantic_anchor": "right_hand",
+        "slot_type_aliases": "ring,bracelet,hands,hand",
+        "instance_preference": "second_or_right",
+        "icon_source": "curios_slot_icon",
+        "tooltip": "curios_slot_display_name",
+        "dynamic": "true"
+      },
+      "action": "open_curio_picker"
+    },
+    {
+      "id": "curio_anchor_feet",
+      "type": "custom",
+      "x": 322,
+      "y": 260,
+      "w": 18,
+      "h": 18,
+      "text": "",
+      "icon": null,
+      "props": {
+        "customType": "character_not_container:curio_anchor",
+        "semantic_anchor": "feet",
+        "slot_type_aliases": "feet,shoes,anklet",
+        "icon_source": "curios_slot_icon",
+        "tooltip": "curios_slot_display_name",
+        "dynamic": "true"
+      },
+      "action": "open_curio_picker"
+    },
+    {
+      "id": "curio_fallback_anchor_region",
+      "type": "custom",
+      "x": 350,
+      "y": 205,
+      "w": 32,
+      "h": 82,
+      "text": "",
+      "icon": null,
+      "props": {
+        "customType": "character_not_container:curio_fallback_region",
+        "purpose": "unknown_or_unmapped_curio_slot_types",
+        "layout": "vertical_then_wrap",
+        "slot_size": "18",
+        "gap": "2",
+        "dynamic": "true"
+      }
+    },
+    {
+      "id": "equipment_picker_overlay_reference",
+      "type": "custom",
+      "x": 166,
+      "y": 78,
+      "w": 214,
+      "h": 160,
+      "text": "",
+      "icon": null,
+      "props": {
+        "customType": "character_not_container:equipment_picker_overlay",
+        "initially_hidden": "true",
+        "source": "player_inventory_only",
+        "include_equipped_item": "true",
+        "include_unequip_option": "true",
+        "show_normal_item_tooltips": "true",
+        "server_authoritative_swap": "true"
+      },
+      "hidden": true
+    }
+  ],
+  "container": null,
+  "bindingsSchema": {},
+  "actions": [
+    "open_equipment_picker",
+    "open_curio_picker"
+  ],
+  "appVersion": "0.10.0"
+}

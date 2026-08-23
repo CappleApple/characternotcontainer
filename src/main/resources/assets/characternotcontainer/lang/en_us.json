@@ -1,0 +1,18 @@
+{
+  "key.categories.characternotcontainer": "Character Not Container",
+  "key.characternotcontainer.open_character": "Open Character Screen",
+  "gui.characternotcontainer.character": "CHARACTER",
+  "gui.characternotcontainer.no_attribute_changes": "No attribute changes",
+  "gui.characternotcontainer.unequip": "Empty / Unequip",
+  "gui.characternotcontainer.cosmetics": "Cosmetics",
+  "gui.characternotcontainer.equipment": "Equipment",
+  "gui.characternotcontainer.show_cosmetics": "Show cosmetic Curios slots",
+  "gui.characternotcontainer.show_equipment": "Show functional Curios slots",
+  "gui.characternotcontainer.cosmetic_slot": "Cosmetic %s",
+  "slot.characternotcontainer.head": "Head",
+  "slot.characternotcontainer.chest": "Chest",
+  "slot.characternotcontainer.legs": "Legs",
+  "slot.characternotcontainer.feet": "Feet",
+  "message.characternotcontainer.equipment_change_refused": "That equipment change is not currently allowed.",
+  "message.characternotcontainer.server_required": "This equipment change requires Character Not Container on the server."
+}
