@@ -1,37 +1,69 @@
 package com.cappleapple.characternotcontainer.layout;
 
-import java.util.ArrayList;
+import com.google.gson.annotations.SerializedName;
+
 import java.util.LinkedHashMap;
-import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
+/** Maps Curios slot-type IDs to the screen's fixed, built-in body anchors. */
 public final class EquipmentScreenSpec {
-    public String id = "character_not_container_equipment_screen_example";
-    public String modId = "characternotcontainer";
-    public int width = 400;
-    public int height = 320;
-    public List<Widget> widgets = new ArrayList<>();
+    public Map<String, CurioAnchor> slots = defaultSlots();
 
-    public Widget widget(String id) {
-        return widgets.stream().filter(widget -> id.equals(widget.id)).findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Missing required layout widget: " + id));
+    public static EquipmentScreenSpec defaults() {
+        return new EquipmentScreenSpec();
     }
 
-    public List<Widget> widgetsOfCustomType(String customType) {
-        return widgets.stream().filter(widget -> customType.equals(widget.props.get("customType"))).toList();
+    public CurioAnchor anchorFor(String slotType) {
+        if (slotType == null || slotType.isBlank()) return CurioAnchor.OTHER;
+        String normalized = slotType.toLowerCase(Locale.ROOT);
+        CurioAnchor direct = slots.get(normalized);
+        if (direct != null) return direct;
+        int separator = normalized.indexOf(':');
+        return separator >= 0
+                ? slots.getOrDefault(normalized.substring(separator + 1), CurioAnchor.OTHER)
+                : CurioAnchor.OTHER;
     }
 
-    public static final class Widget {
-        public String id = "";
-        public String type = "";
-        public int x;
-        public int y;
-        public int w;
-        public int h;
-        public String text = "";
-        public String icon;
-        public Map<String, String> props = new LinkedHashMap<>();
-        public List<Widget> item_template = new ArrayList<>();
-        public boolean hidden;
+    public void validate() {
+        if (slots == null || slots.size() > 256) {
+            throw new IllegalArgumentException("Curios slot bindings must contain at most 256 entries");
+        }
+        Map<String, CurioAnchor> normalized = new LinkedHashMap<>();
+        slots.forEach((slotType, anchor) -> {
+            if (slotType == null || slotType.isBlank() || slotType.length() > 128 || anchor == null) {
+                throw new IllegalArgumentException("Every Curios slot binding needs a slot ID and anchor");
+            }
+            normalized.put(slotType.toLowerCase(Locale.ROOT), anchor);
+        });
+        slots = normalized;
+    }
+
+    private static Map<String, CurioAnchor> defaultSlots() {
+        Map<String, CurioAnchor> result = new LinkedHashMap<>();
+        bind(result, CurioAnchor.HEAD, "head", "hat", "face", "mask");
+        bind(result, CurioAnchor.NECK, "neck", "necklace", "amulet");
+        bind(result, CurioAnchor.BACK, "back", "cape", "wings");
+        bind(result, CurioAnchor.BELT, "belt", "waist", "body");
+        bind(result, CurioAnchor.HANDS, "hands", "hand", "ring", "bracelet");
+        bind(result, CurioAnchor.FEET, "feet", "shoes", "anklet");
+        bind(result, CurioAnchor.OTHER, "charm", "curio");
+        return result;
+    }
+
+    private static void bind(Map<String, CurioAnchor> destination, CurioAnchor anchor, String... slotTypes) {
+        for (String slotType : slotTypes) destination.put(slotType, anchor);
+    }
+
+    public enum CurioAnchor {
+        @SerializedName("head") HEAD,
+        @SerializedName("neck") NECK,
+        @SerializedName("back") BACK,
+        @SerializedName("belt") BELT,
+        @SerializedName("hands") HANDS,
+        @SerializedName("left_hand") LEFT_HAND,
+        @SerializedName("right_hand") RIGHT_HAND,
+        @SerializedName("feet") FEET,
+        @SerializedName("other") OTHER
     }
 }

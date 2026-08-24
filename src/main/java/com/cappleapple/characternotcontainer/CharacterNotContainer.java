@@ -1,6 +1,7 @@
 package com.cappleapple.characternotcontainer;
 
 import com.cappleapple.characternotcontainer.command.CharacterCommands;
+import com.cappleapple.characternotcontainer.compat.needsnotnecessities.NeedsNotNecessitiesSourceBridge;
 import com.cappleapple.characternotcontainer.config.CharacterConfigManager;
 import com.cappleapple.characternotcontainer.network.EquipmentNetwork;
 import com.mojang.logging.LogUtils;
@@ -21,6 +22,7 @@ public final class CharacterNotContainer {
         modBus.addListener(EquipmentNetwork::register);
         NeoForge.EVENT_BUS.addListener(CharacterCommands::register);
         NeoForge.EVENT_BUS.addListener(EquipmentNetwork::playerLoggedOut);
+        NeoForge.EVENT_BUS.addListener(NeedsNotNecessitiesSourceBridge::serverStarted);
     }
 
     public static ResourceLocation id(String path) {

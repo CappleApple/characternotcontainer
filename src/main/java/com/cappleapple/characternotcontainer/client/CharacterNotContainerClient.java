@@ -7,24 +7,72 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
 @Mod(value = CharacterNotContainer.MOD_ID, dist = Dist.CLIENT)
 public final class CharacterNotContainerClient {
+    private static boolean discoverAttributes;
+    private static int discoveryDelay;
+
     public CharacterNotContainerClient(net.neoforged.bus.api.IEventBus modBus, ModContainer container) {
         modBus.addListener(ClientKeyMappings::register);
+        modBus.addListener(CharacterNotContainerClient::registerReloadListener);
         NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::clientTick);
         NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::redirectCuriosInventoryButton);
+        NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::playerLoggedIn);
+        NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::playerLoggedOut);
     }
 
     private static void clientTick(ClientTickEvent.Post event) {
-        if (!CharacterConfigManager.general().enableSeparateKeybind) return;
-        while (ClientKeyMappings.OPEN_CHARACTER.consumeClick()) openCharacterScreen();
+        if (discoverAttributes && discoveryDelay-- <= 0) discoverPlayerAttributes();
+        if (CharacterConfigManager.general().enableSeparateKeybind) {
+            while (ClientKeyMappings.OPEN_CHARACTER.consumeClick()) openCharacterScreen();
+        }
+    }
+
+    private static void playerLoggedIn(ClientPlayerNetworkEvent.LoggingIn event) {
+        CharacterConfigManager.load();
+        scheduleAttributeDiscovery();
+    }
+
+    private static void playerLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        discoverAttributes = false;
+        discoveryDelay = 0;
+    }
+
+    private static void registerReloadListener(RegisterClientReloadListenersEvent event) {
+        event.registerReloadListener((ResourceManagerReloadListener)resourceManager -> {
+            CharacterConfigManager.load();
+            scheduleAttributeDiscovery();
+        });
+    }
+
+    private static void scheduleAttributeDiscovery() {
+        discoverAttributes = true;
+        discoveryDelay = 20;
+    }
+
+    private static void discoverPlayerAttributes() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null) return;
+        discoverAttributes = false;
+        var ids = BuiltInRegistries.ATTRIBUTE.holders()
+                .filter(holder -> holder.value().isClientSyncable())
+                .filter(holder -> minecraft.player.getAttributes().hasAttribute(holder))
+                .map(holder -> BuiltInRegistries.ATTRIBUTE.getKey(holder.value()))
+                .filter(java.util.Objects::nonNull)
+                .map(Object::toString)
+                .toList();
+        if (CharacterConfigManager.mergeDiscoveredAttributes(ids)) ResolvedStatCatalog.invalidate();
     }
 
     private static void openCharacterScreen() {

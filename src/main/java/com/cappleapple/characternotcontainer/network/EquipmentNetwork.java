@@ -1,6 +1,7 @@
 package com.cappleapple.characternotcontainer.network;
 
 import com.cappleapple.characternotcontainer.CharacterNotContainer;
+import com.cappleapple.characternotcontainer.compat.needsnotnecessities.NeedsNotNecessitiesSourceBridge;
 import com.cappleapple.characternotcontainer.equipment.EquipmentTargetAccess;
 import com.cappleapple.characternotcontainer.equipment.EquipmentTransactions;
 import com.cappleapple.characternotcontainer.equipment.NearbyEquipmentSources;
@@ -20,12 +21,16 @@ public final class EquipmentNetwork {
     private EquipmentNetwork() {}
 
     public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("3").optional();
+        var registrar = event.registrar("4").optional();
         registrar.playToServer(EquipmentChangePayload.TYPE, EquipmentChangePayload.STREAM_CODEC, EquipmentNetwork::handleChange);
         registrar.playToServer(NearbyEquipmentRequestPayload.TYPE, NearbyEquipmentRequestPayload.STREAM_CODEC,
                 EquipmentNetwork::handleNearbyRequest);
         registrar.playToClient(NearbyEquipmentResponsePayload.TYPE, NearbyEquipmentResponsePayload.STREAM_CODEC,
                 EquipmentNetwork::handleNearbyResponse);
+        registrar.playToServer(ModifierSourcesRequestPayload.TYPE, ModifierSourcesRequestPayload.STREAM_CODEC,
+                EquipmentNetwork::handleModifierSourcesRequest);
+        registrar.playToClient(ModifierSourcesResponsePayload.TYPE, ModifierSourcesResponsePayload.STREAM_CODEC,
+                EquipmentNetwork::handleModifierSourcesResponse);
     }
 
     public static void playerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
@@ -76,6 +81,18 @@ public final class EquipmentNetwork {
     }
 
     private static void handleNearbyResponse(NearbyEquipmentResponsePayload response, IPayloadContext context) {
+        context.enqueueWork(() -> ClientAccess.accept(response));
+    }
+
+    private static void handleModifierSourcesRequest(ModifierSourcesRequestPayload request, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player)) return;
+            PacketDistributor.sendToPlayer(player,
+                    new ModifierSourcesResponsePayload(NeedsNotNecessitiesSourceBridge.sources(player)));
+        });
+    }
+
+    private static void handleModifierSourcesResponse(ModifierSourcesResponsePayload response, IPayloadContext context) {
         context.enqueueWork(() -> ClientAccess.accept(response));
     }
 
@@ -149,6 +166,13 @@ public final class EquipmentNetwork {
             net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
             if (minecraft.screen instanceof com.cappleapple.characternotcontainer.client.CharacterEquipmentScreen screen) {
                 screen.acceptNearbyEquipment(response);
+            }
+        }
+
+        private static void accept(ModifierSourcesResponsePayload response) {
+            net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
+            if (minecraft.screen instanceof com.cappleapple.characternotcontainer.client.CharacterEquipmentScreen screen) {
+                screen.acceptModifierSources(response);
             }
         }
     }

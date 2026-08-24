@@ -2,6 +2,8 @@ package com.cappleapple.characternotcontainer.client;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.serialization.JsonOps;
 import com.cappleapple.characternotcontainer.config.CharacterConfigManager;
 import com.cappleapple.characternotcontainer.config.StatDefinition;
@@ -13,6 +15,8 @@ import com.cappleapple.characternotcontainer.layout.ScreenRect;
 import com.cappleapple.characternotcontainer.network.EquipmentChangePayload;
 import com.cappleapple.characternotcontainer.network.NearbyEquipmentRequestPayload;
 import com.cappleapple.characternotcontainer.network.NearbyEquipmentResponsePayload;
+import com.cappleapple.characternotcontainer.network.ModifierSourcesRequestPayload;
+import com.cappleapple.characternotcontainer.network.ModifierSourcesResponsePayload;
 import net.minecraft.ChatFormatting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
@@ -33,14 +37,15 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.registration.NetworkRegistry;
 import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.EnumSet;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -55,13 +60,19 @@ public final class CharacterEquipmentScreen extends Screen {
     private static final int STATS_PANEL = 0xE70D1014;
     private static final int BORDER = 0xFF6D737A;
     private static final int TEXT = 0xFFF2F2F2;
-    private static final int POSITIVE = 0xFFD0D750;
-    private static final int NEGATIVE = 0xFFFF7A7A;
     private static final int CURIO_SLOT_BACKGROUND = 0xC421262C;
     private static final int CURIO_SLOT_BORDER = 0xCC6D737A;
     private static final int COSMETIC_CURIO_SLOT_BACKGROUND = 0xD04B2D63;
     private static final int COSMETIC_CURIO_SLOT_BORDER = 0xD09D70B5;
     private static final CuriosClientIntegration CURIOS = loadCurios();
+    private static final int SCREEN_WIDTH = 400;
+    private static final int SCREEN_HEIGHT = 320;
+    private static final int STATS_ROW_HEIGHT = 26;
+    private static final ScreenRect SCREEN_BACKGROUND = new ScreenRect(0, 0, 400, 320);
+    private static final ScreenRect STATS_LIST = new ScreenRect(16, 38, 134, 258);
+    private static final ScreenRect STATS_SCROLLBAR = new ScreenRect(150, 38, 8, 258);
+    private static final ScreenRect PLAYER_PREVIEW = new ScreenRect(170, 12, 220, 296);
+    private static final ScreenRect PICKER_FALLBACK = new ScreenRect(166, 78, 214, 160);
 
     private final Player player;
     private EquipmentScreenSpec spec;
@@ -78,8 +89,10 @@ public final class CharacterEquipmentScreen extends Screen {
     private int pickerSearchId;
     private ScreenRect pickerAnchor;
     private List<NearbyEquipmentResponsePayload.Entry> nearbyEquipment = List.of();
+    private Map<ModifierKey, List<ModifierSourcesResponsePayload.Source>> modifierSourceHints = Map.of();
     private HoverTooltip hoverTooltip;
     private PickerTarget hoveredEquipmentTarget;
+    private TextureTarget playerCompositeTarget;
 
     public CharacterEquipmentScreen(Player player) {
         super(Component.translatable("gui.characternotcontainer.character"));
@@ -89,11 +102,14 @@ public final class CharacterEquipmentScreen extends Screen {
     @Override
     protected void init() {
         spec = EquipmentLayoutLoader.load();
-        layoutScale = Math.min(1.0D, Math.min((width - 12.0D) / spec.width, (height - 12.0D) / spec.height));
+        layoutScale = Math.min(1.0D, Math.min((width - 12.0D) / SCREEN_WIDTH, (height - 12.0D) / SCREEN_HEIGHT));
         layoutScale = Math.max(0.4D, layoutScale);
-        layoutX = (width - scaled(spec.width)) / 2;
-        layoutY = (height - scaled(spec.height)) / 2;
+        layoutX = (width - scaled(SCREEN_WIDTH)) / 2;
+        layoutY = (height - scaled(SCREEN_HEIGHT)) / 2;
         refreshCurios();
+        if (serverSupports(ModifierSourcesRequestPayload.TYPE.id())) {
+            PacketDistributor.sendToServer(ModifierSourcesRequestPayload.INSTANCE);
+        }
     }
 
     @Override
@@ -123,6 +139,7 @@ public final class CharacterEquipmentScreen extends Screen {
         List<PlacedCurio> placedCurios = placedCurios();
         hoveredEquipmentTarget = picker == null ? hoveredEquipmentTarget(mouseX, mouseY, placedCurios) : null;
         renderGroup(graphics, 200.0F, () -> {
+            renderPlayerPreviewFrame(graphics);
             renderChangedAttributes(graphics, mouseX, mouseY);
             renderVanillaEquipment(graphics, mouseX, mouseY);
             renderCurios(graphics, placedCurios, mouseX, mouseY);
@@ -136,22 +153,67 @@ public final class CharacterEquipmentScreen extends Screen {
 
     private void renderPlayerGroup(GuiGraphics graphics, int mouseX, int mouseY) {
         graphics.flush();
+        Minecraft minecraft = Minecraft.getInstance();
+        RenderTarget mainTarget = minecraft.getMainRenderTarget();
+        TextureTarget compositeTarget = playerCompositeTarget(mainTarget);
+        compositeTarget.setClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+        compositeTarget.clear(Minecraft.ON_OSX);
+        compositeTarget.bindWrite(true);
+        try {
+            renderGroup(graphics, 0.0F, () -> renderPlayer(graphics, mouseX, mouseY));
+            // AzureLib armor models intentionally obtain Minecraft's world
+            // render buffers instead of using the VertexConsumer supplied by
+            // InventoryScreen. Finish both buffers before restoring the main
+            // framebuffer so every replacement armor layer stays in the
+            // isolated player composite.
+            minecraft.renderBuffers().bufferSource().endBatch();
+            minecraft.renderBuffers().outlineBufferSource().endOutlineBatch();
+            graphics.flush();
+        } finally {
+            mainTarget.bindWrite(true);
+        }
+
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        compositeTarget.blitToScreen(mainTarget.width, mainTarget.height, false);
+        RenderSystem.disableBlend();
+        RenderSystem.enableDepthTest();
         RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
-        renderGroup(graphics, 0.0F, () -> renderPlayer(graphics, mouseX, mouseY));
-        RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
+    }
+
+    private TextureTarget playerCompositeTarget(RenderTarget mainTarget) {
+        if (playerCompositeTarget == null) {
+            playerCompositeTarget = new TextureTarget(mainTarget.width, mainTarget.height, true, Minecraft.ON_OSX);
+        } else if (playerCompositeTarget.width != mainTarget.width || playerCompositeTarget.height != mainTarget.height) {
+            playerCompositeTarget.resize(mainTarget.width, mainTarget.height, Minecraft.ON_OSX);
+        }
+        return playerCompositeTarget;
+    }
+
+    @Override
+    public void removed() {
+        if (playerCompositeTarget != null) {
+            playerCompositeTarget.destroyBuffers();
+            playerCompositeTarget = null;
+        }
+        super.removed();
     }
 
     private void renderPanels(GuiGraphics graphics) {
-        for (EquipmentScreenSpec.Widget widget : spec.widgets) {
-            if (!"panel".equals(widget.type) || "stats_background".equals(widget.id)) continue;
-            ScreenRect rect = rect(widget);
-            graphics.fill(rect.x(), rect.y(), rect.x() + rect.width(), rect.y() + rect.height(), PANEL);
-            outline(graphics, rect, BORDER);
+        ScreenRect background = screenRect(SCREEN_BACKGROUND);
+        if (!blitOptionalSprite(graphics, CharacterGuiSprites.SCREEN_BACKGROUND, background)) {
+            graphics.fill(background.x(), background.y(), background.x() + background.width(), background.y() + background.height(), PANEL);
+            outline(graphics, background, BORDER);
         }
+        blitOptionalSprite(graphics, CharacterGuiSprites.PLAYER_PREVIEW_BACKGROUND, screenRect(PLAYER_PREVIEW));
+    }
+
+    private void renderPlayerPreviewFrame(GuiGraphics graphics) {
+        blitOptionalSprite(graphics, CharacterGuiSprites.PLAYER_PREVIEW_FRAME, screenRect(PLAYER_PREVIEW));
     }
 
     private void renderPlayer(GuiGraphics graphics, int mouseX, int mouseY) {
-        ScreenRect preview = rect(spec.widget("player_preview_reference"));
+        ScreenRect preview = screenRect(PLAYER_PREVIEW);
         int entityScale = Math.max(30, (int)Math.round(preview.height() * 0.43D));
         float lookOriginX = preview.x() + preview.width() / 2.0F;
         float lookOriginY = preview.y() + preview.height() * 0.30F;
@@ -175,15 +237,28 @@ public final class CharacterEquipmentScreen extends Screen {
         pickerScroll = 0;
     }
 
+    public void acceptModifierSources(ModifierSourcesResponsePayload response) {
+        Map<ModifierKey, List<ModifierSourcesResponsePayload.Source>> hints = new HashMap<>();
+        response.entries().forEach(entry -> hints.put(new ModifierKey(entry.attributeId(), entry.modifierId()), entry.sources()));
+        modifierSourceHints = Map.copyOf(hints);
+    }
+
     private void renderVanillaEquipment(GuiGraphics graphics, int mouseX, int mouseY) {
-        for (EquipmentScreenSpec.Widget widget : spec.widgetsOfCustomType("character_not_container:equipment_hitbox")) {
-            EquipmentSlot slot = vanillaSlot(widget.props.get("slot_id"));
-            if (slot == null) continue;
-            ScreenRect hitbox = rect(widget);
+        for (EquipmentSlot slot : bodySlots()) {
+            ScreenRect hitbox = bodyBounds(slot);
             boolean hovered = hoveredEquipmentTarget instanceof VanillaTarget target && target.slot == slot;
             boolean selected = picker instanceof VanillaTarget target && target.slot == slot;
-            if (CharacterConfigManager.general().debugEquipmentHitboxes || hovered || selected) {
-                outline(graphics, hitbox, selected ? 0xFFE5BD68 : hovered ? 0x99FFFFFF : 0x6688CCFF);
+            blitOptionalSprite(graphics, CharacterGuiSprites.EQUIPMENT_SLOT, hitbox);
+            if (selected) {
+                if (!blitOptionalSprite(graphics, CharacterGuiSprites.EQUIPMENT_SLOT_SELECTED, hitbox)) {
+                    outline(graphics, hitbox, 0xFFE5BD68);
+                }
+            } else if (hovered) {
+                if (!blitOptionalSprite(graphics, CharacterGuiSprites.EQUIPMENT_SLOT_HOVERED, hitbox)) {
+                    outline(graphics, hitbox, 0x99FFFFFF);
+                }
+            } else if (CharacterConfigManager.general().debugEquipmentHitboxes) {
+                outline(graphics, hitbox, 0x6688CCFF);
             }
             ItemStack equipped = player.getItemBySlot(slot);
             int iconX = hitbox.x() + (hitbox.width() - 16) / 2;
@@ -216,13 +291,26 @@ public final class CharacterEquipmentScreen extends Screen {
                     && target.slot.cosmetic() == placement.slot.cosmetic();
             int slotBackground = placement.slot.cosmetic()
                     ? COSMETIC_CURIO_SLOT_BACKGROUND : CURIO_SLOT_BACKGROUND;
-            graphics.fill(placement.bounds.x(), placement.bounds.y(), placement.bounds.x() + placement.bounds.width(),
-                    placement.bounds.y() + placement.bounds.height(), slotBackground);
-            int border = selected ? 0xFFE5BD68
-                    : hovered ? 0xFFFFFFFF
-                    : CharacterConfigManager.general().debugEquipmentHitboxes ? 0xFF88CCFF
-                    : placement.slot.cosmetic() ? COSMETIC_CURIO_SLOT_BORDER : CURIO_SLOT_BORDER;
-            outline(graphics, placement.bounds, border);
+            ResourceLocation baseSprite = placement.slot.cosmetic()
+                    ? CharacterGuiSprites.COSMETIC_CURIO_SLOT : CharacterGuiSprites.CURIO_SLOT;
+            boolean customBase = blitOptionalSprite(graphics, baseSprite, placement.bounds);
+            if (!customBase) {
+                graphics.fill(placement.bounds.x(), placement.bounds.y(), placement.bounds.x() + placement.bounds.width(),
+                        placement.bounds.y() + placement.bounds.height(), slotBackground);
+                outline(graphics, placement.bounds, CharacterConfigManager.general().debugEquipmentHitboxes
+                        && !selected && !hovered ? 0xFF88CCFF
+                        : placement.slot.cosmetic() ? COSMETIC_CURIO_SLOT_BORDER : CURIO_SLOT_BORDER);
+            }
+            ResourceLocation stateSprite = selected
+                    ? placement.slot.cosmetic() ? CharacterGuiSprites.COSMETIC_CURIO_SLOT_SELECTED
+                    : CharacterGuiSprites.CURIO_SLOT_SELECTED
+                    : hovered ? placement.slot.cosmetic() ? CharacterGuiSprites.COSMETIC_CURIO_SLOT_HOVERED
+                    : CharacterGuiSprites.CURIO_SLOT_HOVERED : null;
+            if (stateSprite != null && !blitOptionalSprite(graphics, stateSprite, placement.bounds)) {
+                outline(graphics, placement.bounds, selected ? 0xFFE5BD68 : 0xFFFFFFFF);
+            } else if (stateSprite == null && CharacterConfigManager.general().debugEquipmentHitboxes && customBase) {
+                outline(graphics, placement.bounds, 0xFF88CCFF);
+            }
             if (placement.slot.stack().isEmpty()) {
                 graphics.blit(curioIconTexture(placement.slot.icon()), placement.bounds.x() + 1, placement.bounds.y() + 1, 0.0F, 0.0F,
                         16, 16, 16, 16);
@@ -243,11 +331,21 @@ public final class CharacterEquipmentScreen extends Screen {
         if (CURIOS == null) return;
         ScreenRect bounds = cosmeticsToggleBounds();
         boolean hovered = picker == null && bounds.contains(mouseX, mouseY);
-        int background = showCosmetics ? 0xE05B327A : hovered ? 0xE0444B53 : 0xE02A3036;
-        graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), background);
-        outline(graphics, bounds, showCosmetics ? COSMETIC_CURIO_SLOT_BORDER : hovered ? 0xFFFFFFFF : BORDER);
-        graphics.drawCenteredString(font, showCosmetics ? "E" : "C",
-                bounds.x() + bounds.width() / 2, bounds.y() + (bounds.height() - font.lineHeight) / 2 + 1, TEXT);
+        ResourceLocation normalSprite = showCosmetics
+                ? CharacterGuiSprites.SHOW_EQUIPMENT_BUTTON : CharacterGuiSprites.SHOW_COSMETICS_BUTTON;
+        ResourceLocation hoveredSprite = showCosmetics
+                ? CharacterGuiSprites.SHOW_EQUIPMENT_BUTTON_HOVERED : CharacterGuiSprites.SHOW_COSMETICS_BUTTON_HOVERED;
+        boolean custom = hovered && blitOptionalSprite(graphics, hoveredSprite, bounds);
+        if (!custom) custom = blitOptionalSprite(graphics, normalSprite, bounds);
+        if (!custom) {
+            int background = showCosmetics ? 0xE05B327A : hovered ? 0xE0444B53 : 0xE02A3036;
+            graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), background);
+            outline(graphics, bounds, showCosmetics ? COSMETIC_CURIO_SLOT_BORDER : hovered ? 0xFFFFFFFF : BORDER);
+            graphics.drawCenteredString(font, showCosmetics ? "E" : "C",
+                    bounds.x() + bounds.width() / 2, bounds.y() + (bounds.height() - font.lineHeight) / 2 + 1, TEXT);
+        } else if (hovered && !hasGuiSprite(hoveredSprite)) {
+            outline(graphics, bounds, 0xFFFFFFFF);
+        }
         if (hovered) {
             hoverTooltip = HoverTooltip.components(List.of(Component.translatable(showCosmetics
                     ? "gui.characternotcontainer.show_equipment" : "gui.characternotcontainer.show_cosmetics")));
@@ -257,60 +355,58 @@ public final class CharacterEquipmentScreen extends Screen {
     private ScreenRect cosmeticsToggleBounds() {
         int size = 18;
         int margin = Math.max(6, scaled(10));
-        return new ScreenRect(layoutX + scaled(spec.width) - margin - size, layoutY + margin, size, size);
+        return new ScreenRect(layoutX + scaled(SCREEN_WIDTH) - margin - size, layoutY + margin, size, size);
     }
 
     private List<PlacedCurio> placedCurios() {
-        List<EquipmentScreenSpec.Widget> anchors = spec.widgetsOfCustomType("character_not_container:curio_anchor");
-        EquipmentScreenSpec.Widget fallback = spec.widget("curio_fallback_anchor_region");
-        Map<String, Integer> usage = new HashMap<>();
+        Map<EquipmentScreenSpec.CurioAnchor, Integer> usage = new HashMap<>();
         List<PlacedCurio> result = new ArrayList<>();
-        int fallbackIndex = 0;
+        int handIndex = 0;
         for (CuriosClientIntegration.CurioSlotView slot : curiosSlots) {
-            List<EquipmentScreenSpec.Widget> matches = anchors.stream().filter(anchor -> aliases(anchor).stream()
-                    .anyMatch(alias -> alias.equals(slot.type().toLowerCase(Locale.ROOT)))).toList();
-            if (matches.isEmpty()) {
-                ScreenRect region = rect(fallback);
+            String type = slot.type().toLowerCase(Locale.ROOT);
+            EquipmentScreenSpec.CurioAnchor anchor = spec.anchorFor(type);
+            if (anchor == EquipmentScreenSpec.CurioAnchor.HANDS) {
+                anchor = handIndex++ % 2 == 0
+                        ? EquipmentScreenSpec.CurioAnchor.LEFT_HAND
+                        : EquipmentScreenSpec.CurioAnchor.RIGHT_HAND;
+            }
+            int used = usage.merge(anchor, 1, Integer::sum) - 1;
+            ScreenRect base = curioAnchor(anchor);
+            if (anchor == EquipmentScreenSpec.CurioAnchor.OTHER) {
                 int gap = scaled(2);
                 int slotSize = 18;
-                int rows = Math.max(1, (region.height() + gap) / (slotSize + gap));
-                int x = region.x() + fallbackIndex / rows * (slotSize + gap);
-                int y = region.y() + fallbackIndex % rows * (slotSize + gap);
+                int rows = 4;
+                int x = base.x() + used / rows * (slotSize + gap);
+                int y = base.y() + used % rows * (slotSize + gap);
                 result.add(new PlacedCurio(slot, new ScreenRect(x, y, slotSize, slotSize)));
-                fallbackIndex++;
                 continue;
             }
-            String anchorGroup = matches.stream().map(anchor -> anchor.id).sorted().reduce((left, right) -> left + "|" + right).orElse(slot.type());
-            int used = usage.merge(anchorGroup, 1, Integer::sum) - 1;
-            EquipmentScreenSpec.Widget anchor = matches.get(used % matches.size());
-            int overflow = used / matches.size();
-            ScreenRect anchorRect = rect(anchor);
             int spacing = Math.max(20, scaled(20));
-            int x = bodyAlignedCurioX(anchor, anchorRect) + (overflow % 2) * spacing;
-            int y = bodyAlignedCurioY(anchor, anchorRect) + (overflow / 2) * spacing;
+            int x = base.x() + (used % 2) * spacing;
+            int y = base.y() + (used / 2) * spacing;
             result.add(new PlacedCurio(slot, new ScreenRect(x, y, 18, 18)));
         }
         return result;
     }
 
-    private int bodyAlignedCurioX(EquipmentScreenSpec.Widget anchor, ScreenRect anchorRect) {
-        if (!"curio_anchor_neck".equals(anchor.id) && !"curio_anchor_belt".equals(anchor.id)) return anchorRect.x();
-        ScreenRect chest = rect(spec.widget("equip_hitbox_chest"));
-        return chest.x() + (chest.width() - 18) / 2;
-    }
-
-    private int bodyAlignedCurioY(EquipmentScreenSpec.Widget anchor, ScreenRect anchorRect) {
-        ScreenRect chest = rect(spec.widget("equip_hitbox_chest"));
-        if ("curio_anchor_neck".equals(anchor.id)) return chest.y() + scaled(4);
-        if ("curio_anchor_belt".equals(anchor.id)) return chest.y() + chest.height() - scaled(11);
-        return anchorRect.y();
+    private ScreenRect curioAnchor(EquipmentScreenSpec.CurioAnchor anchor) {
+        ScreenRect fixed = switch (anchor) {
+            case HEAD -> new ScreenRect(319, 52, 18, 18);
+            case NECK -> new ScreenRect(271, 91, 18, 18);
+            case BACK -> new ScreenRect(196, 108, 18, 18);
+            case BELT -> new ScreenRect(271, 164, 18, 18);
+            case HANDS, LEFT_HAND -> new ScreenRect(199, 165, 18, 18);
+            case RIGHT_HAND -> new ScreenRect(342, 165, 18, 18);
+            case FEET -> new ScreenRect(322, 260, 18, 18);
+            case OTHER -> new ScreenRect(350, 205, 18, 18);
+        };
+        return screenRect(fixed);
     }
 
     private PickerTarget hoveredEquipmentTarget(double mouseX, double mouseY, List<PlacedCurio> placements) {
         PickerTarget target = null;
-        for (EquipmentScreenSpec.Widget widget : spec.widgetsOfCustomType("character_not_container:equipment_hitbox")) {
-            EquipmentSlot slot = vanillaSlot(widget.props.get("slot_id"));
-            if (slot != null && rect(widget).contains(mouseX, mouseY)) target = new VanillaTarget(slot);
+        for (EquipmentSlot slot : bodySlots()) {
+            if (bodyBounds(slot).contains(mouseX, mouseY)) target = new VanillaTarget(slot);
         }
         for (PlacedCurio placement : placements) {
             if (placement.bounds.contains(mouseX, mouseY)) target = new CurioTarget(placement.slot);
@@ -319,37 +415,40 @@ public final class CharacterEquipmentScreen extends Screen {
     }
 
     private void renderChangedAttributes(GuiGraphics graphics, int mouseX, int mouseY) {
-        EquipmentScreenSpec.Widget listWidget = spec.widget("stats_list");
-        ScreenRect viewport = rect(listWidget);
-        int rowHeight = Math.max(20, scaled(Integer.parseInt(listWidget.props.getOrDefault("item_height", "26"))));
+        ScreenRect viewport = screenRect(STATS_LIST);
+        int rowHeight = Math.max(20, scaled(STATS_ROW_HEIGHT));
         List<ChangedStat> changed = changedStats();
         int visibleRows = Math.max(1, (viewport.height() + rowHeight - 1) / rowHeight);
         statsScroll = Math.max(0, Math.min(statsScroll, Math.max(0, changed.size() - visibleRows)));
         int displayedRows = Math.min(visibleRows, changed.size());
         if (displayedRows > 0) {
             int panelHeight = Math.min(viewport.height(), displayedRows * rowHeight);
-            graphics.fill(viewport.x(), viewport.y(), viewport.x() + viewport.width(), viewport.y() + panelHeight, STATS_PANEL);
-            outline(graphics, new ScreenRect(viewport.x(), viewport.y(), viewport.width(), panelHeight), 0xFF444B53);
+            ScreenRect panel = new ScreenRect(viewport.x(), viewport.y(), viewport.width(), panelHeight);
+            if (!blitOptionalSprite(graphics, CharacterGuiSprites.STATS_PANEL, panel)) {
+                graphics.fill(panel.x(), panel.y(), panel.x() + panel.width(), panel.y() + panel.height(), STATS_PANEL);
+                outline(graphics, panel, 0xFF444B53);
+            }
         }
         graphics.enableScissor(viewport.x(), viewport.y(), viewport.x() + viewport.width(), viewport.y() + viewport.height());
         for (int row = statsScroll; row < changed.size() && row < statsScroll + visibleRows; row++) {
             ChangedStat changedStat = changed.get(row);
             int y = viewport.y() + (row - statsScroll) * rowHeight;
             ScreenRect rowRect = new ScreenRect(viewport.x(), y, viewport.width(), rowHeight);
-            if (rowRect.contains(mouseX, mouseY)) graphics.fill(rowRect.x(), rowRect.y(), rowRect.x() + rowRect.width(), rowRect.y() + rowRect.height(), 0x553F4852);
+            if (rowRect.contains(mouseX, mouseY)
+                    && !blitOptionalSprite(graphics, CharacterGuiSprites.STATS_ROW_HOVERED, rowRect)) {
+                graphics.fill(rowRect.x(), rowRect.y(), rowRect.x() + rowRect.width(), rowRect.y() + rowRect.height(), 0x553F4852);
+            }
             renderAttributeIcon(graphics, changedStat.stat, viewport.x() + scaled(4), y + Math.max(2, (rowHeight - 16) / 2));
             String name = displayName(changedStat.stat);
             int nameX = viewport.x() + scaled(25);
-            int deltaRight = viewport.x() + viewport.width() - scaled(4);
-            String delta = formattedChange(changedStat);
-            double displayDelta = changedStat.stat.definition().format.displayDifference(changedStat.base, changedStat.current, changedStat.stat.definition());
-            int deltaX = deltaRight - font.width(delta);
-            graphics.drawString(font, font.plainSubstrByWidth(name, Math.max(10, deltaX - nameX - 4)), nameX, y + (rowHeight - 8) / 2, TEXT, false);
-            boolean beneficial = displayDelta >= 0.0D == changedStat.stat.definition().higherIsBetter;
-            graphics.drawString(font, delta, deltaX, y + (rowHeight - 8) / 2, beneficial ? POSITIVE : NEGATIVE, false);
+            int valueRight = viewport.x() + viewport.width() - scaled(4);
+            String value = changedStat.stat.definition().effectiveFormat().format(changedStat.current, changedStat.stat.definition());
+            int valueX = valueRight - font.width(value);
+            graphics.drawString(font, font.plainSubstrByWidth(name, Math.max(10, valueX - nameX - 4)), nameX, y + (rowHeight - 8) / 2, TEXT, false);
+            graphics.drawString(font, value, valueX, y + (rowHeight - 8) / 2, TEXT, false);
             if (rowRect.contains(mouseX, mouseY)) {
-                List<Contribution> contributions = equipmentContributions(changedStat.stat);
-                if (!contributions.isEmpty()) hoverTooltip = HoverTooltip.sources(contributionTooltip(contributions, changedStat.stat.definition()));
+                List<SourceTooltipLine> sources = modifierSources(changedStat);
+                if (!sources.isEmpty()) hoverTooltip = HoverTooltip.sources(sources);
             }
         }
         graphics.disableScissor();
@@ -358,23 +457,14 @@ public final class CharacterEquipmentScreen extends Screen {
 
     private List<ChangedStat> changedStats() {
         List<ChangedStat> result = new ArrayList<>();
-        Set<Holder<Attribute>> configuredAttributes = new HashSet<>();
-        for (ResolvedCategory category : ResolvedStatCatalog.categories()) {
-            for (ResolvedStat stat : category.stats()) {
-                configuredAttributes.add(stat.attribute());
-                AttributeInstance instance = player.getAttribute(stat.attribute());
-                if (instance != null) {
-                    ChangedStat changed = changedStat(stat, instance, true);
-                    if (Math.abs(changed.current - changed.base) > 0.0000001D) result.add(changed);
-                }
+        for (ResolvedStat stat : ResolvedStatCatalog.stats()) {
+            if (!stat.definition().visible) continue;
+            AttributeInstance instance = player.getAttribute(stat.attribute());
+            if (instance != null) {
+                ChangedStat changed = changedStat(stat, instance, true);
+                if (Math.abs(changed.current - changed.base) > 0.0000001D) result.add(changed);
             }
         }
-        player.getAttributes().getSyncableAttributes().stream()
-                .filter(instance -> !configuredAttributes.contains(instance.getAttribute()))
-                .filter(instance -> Math.abs(instance.getValue() - instance.getBaseValue()) > 0.0000001D)
-                .map(instance -> changedStat(automaticStat(instance), instance, false))
-                .sorted(Comparator.comparing(stat -> displayName(stat.stat), String.CASE_INSENSITIVE_ORDER))
-                .forEach(result::add);
         return result;
     }
 
@@ -384,46 +474,9 @@ public final class CharacterEquipmentScreen extends Screen {
         if (includeEquipmentFallback && Math.abs(instance.getValue() - instance.getBaseValue()) <= 0.0000001D) {
             vanillaEquipmentContributions(stat).forEach(contribution -> modifiers.putIfAbsent(contribution.modifier.id(), contribution.modifier));
         }
-        EnumSet<AttributeModifier.Operation> operations = EnumSet.noneOf(AttributeModifier.Operation.class);
-        modifiers.values().forEach(modifier -> operations.add(modifier.operation()));
         double current = modifiers.size() == instance.getModifiers().size()
-                ? instance.getValue() : calculateAttributeValue(instance, modifiers.values());
-        return new ChangedStat(stat, instance.getBaseValue(), current, Set.copyOf(operations));
-    }
-
-    private static double calculateAttributeValue(AttributeInstance instance, Iterable<AttributeModifier> modifiers) {
-        double added = instance.getBaseValue();
-        for (AttributeModifier modifier : modifiers) {
-            if (modifier.operation() == AttributeModifier.Operation.ADD_VALUE) added += modifier.amount();
-        }
-        double multiplied = added;
-        for (AttributeModifier modifier : modifiers) {
-            if (modifier.operation() == AttributeModifier.Operation.ADD_MULTIPLIED_BASE) multiplied += added * modifier.amount();
-        }
-        for (AttributeModifier modifier : modifiers) {
-            if (modifier.operation() == AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL) multiplied *= 1.0D + modifier.amount();
-        }
-        return instance.getAttribute().value().sanitizeValue(multiplied);
-    }
-
-    private static String formattedChange(ChangedStat changed) {
-        boolean additive = changed.operations.contains(AttributeModifier.Operation.ADD_VALUE);
-        boolean multiplicative = changed.operations.contains(AttributeModifier.Operation.ADD_MULTIPLIED_BASE)
-                || changed.operations.contains(AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL);
-        if (!additive && multiplicative && Math.abs(changed.base) > 0.0000001D) {
-            return "×" + java.math.BigDecimal.valueOf(changed.current / changed.base).setScale(2,
-                    java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
-        }
-        String delta = changed.stat.definition().format.formatDifference(changed.base, changed.current, changed.stat.definition());
-        return additive && multiplicative ? delta + " [+,×]" : multiplicative ? delta + " [×]" : delta;
-    }
-
-    private static ResolvedStat automaticStat(AttributeInstance instance) {
-        Holder<Attribute> attribute = instance.getAttribute();
-        ResourceLocation id = BuiltInRegistries.ATTRIBUTE.getKey(attribute.value());
-        String attributeId = id == null ? attribute.value().getDescriptionId() : id.toString();
-        return new ResolvedStat(new StatDefinition(attributeId, "",
-                com.cappleapple.characternotcontainer.config.StatFormat.DECIMAL, 2), attribute);
+                ? instance.getValue() : AttributeValueCalculator.calculate(instance, modifiers.values());
+        return new ChangedStat(stat, instance.getBaseValue(), current, modifiers);
     }
 
     private List<Contribution> equipmentContributions(ResolvedStat stat) {
@@ -496,18 +549,129 @@ public final class CharacterEquipmentScreen extends Screen {
         return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() ? value.getAsString() : null;
     }
 
-    private List<SourceTooltipLine> contributionTooltip(List<Contribution> contributions, StatDefinition definition) {
+    private List<SourceTooltipLine> modifierSources(ChangedStat changed) {
+        ResolvedStat stat = changed.stat;
         List<SourceTooltipLine> lines = new ArrayList<>();
-        for (Contribution contribution : contributions) {
-            String value = contribution.modifier.operation() == AttributeModifier.Operation.ADD_VALUE
-                    ? definition.format.formatDifference(0.0D, contribution.modifier.amount(), definition)
-                    : (contribution.modifier.amount() >= 0 ? "+" : "")
-                    + String.format(Locale.ROOT, "%.0f%%", contribution.modifier.amount() * 100.0D);
-            ChatFormatting color = contribution.modifier.amount() >= 0.0D ? ChatFormatting.GREEN : ChatFormatting.RED;
-            Component text = contribution.stack.getHoverName().copy().append(Component.literal("  " + value).withStyle(color));
-            lines.add(new SourceTooltipLine(contribution.stack.copy(), text));
+        lines.add(new SourceTooltipLine(ItemStack.EMPTY,
+                Component.literal(displayName(stat)).withStyle(ChatFormatting.GOLD)));
+        AttributeInstance instance = player.getAttribute(stat.attribute());
+        if (instance == null) return lines;
+        Set<ResourceLocation> explained = new HashSet<>();
+        for (Contribution contribution : equipmentContributions(stat)) {
+            AttributeModifier active = changed.modifiers.get(contribution.modifier.id());
+            if (active != null) {
+                addSource(lines, contribution.stack.copy(), sourceWithAmount(
+                        contribution.stack.getHoverName(), active, stat.definition(), instance));
+                explained.add(active.id());
+            }
         }
+
+        for (var effectInstance : player.getActiveEffects()) {
+            effectInstance.getEffect().value().createModifiers(effectInstance.getAmplifier(), (attribute, modifier) -> {
+                AttributeModifier active = changed.modifiers.get(modifier.id());
+                if (attribute.equals(stat.attribute()) && active != null) {
+                    addSource(lines, ItemStack.EMPTY, sourceWithAmount(
+                            effectInstance.getEffect().value().getDisplayName(), active, stat.definition(), instance));
+                    explained.add(active.id());
+                }
+            });
+        }
+
+        ResourceLocation attributeId = BuiltInRegistries.ATTRIBUTE.getKey(stat.attribute().value());
+        if (attributeId != null) {
+            for (AttributeModifier modifier : changed.modifiers.values()) {
+                if (explained.contains(modifier.id())) continue;
+                List<ModifierSourcesResponsePayload.Source> hints = modifierSourceHints.getOrDefault(
+                        new ModifierKey(attributeId, modifier.id()), List.of());
+                boolean identified = false;
+                for (ModifierSourcesResponsePayload.Source source : hints) {
+                    Component name = sourceName(source);
+                    if (name != null) {
+                        addSource(lines, source.stack(), sourceWithAmount(name, modifier, stat.definition(), instance));
+                        identified = true;
+                    }
+                }
+                if (identified) explained.add(modifier.id());
+            }
+        }
+        addUnknownRemainder(lines, changed, explained, instance);
         return lines;
+    }
+
+    private static void addSource(List<SourceTooltipLine> lines, ItemStack stack, Component text) {
+        boolean duplicate = lines.stream().anyMatch(line -> line.text.getString().equals(text.getString())
+                && (stack.isEmpty() && line.stack.isEmpty() || ItemStack.isSameItemSameComponents(stack, line.stack)));
+        if (!duplicate) lines.add(new SourceTooltipLine(stack, text));
+    }
+
+    private static Component sourceName(ModifierSourcesResponsePayload.Source source) {
+        if (!source.translationKey().isBlank()) {
+            return Component.translatableWithFallback(source.translationKey(), source.fallback());
+        }
+        if (!source.fallback().isBlank()) return Component.literal(source.fallback());
+        return source.stack().isEmpty() ? null : source.stack().getHoverName();
+    }
+
+    private static Component sourceWithAmount(Component source, AttributeModifier modifier, StatDefinition definition,
+                                              AttributeInstance instance) {
+        return source.copy().append(Component.literal("  ")).append(modifierAmount(modifier, definition, instance));
+    }
+
+    private static Component modifierAmount(AttributeModifier modifier, StatDefinition definition,
+                                            AttributeInstance instance) {
+        double displayedAmount = modifier.operation() == AttributeModifier.Operation.ADD_VALUE
+                ? AttributeValueCalculator.standaloneAddValue(instance, modifier)
+                : modifier.amount();
+        Component value = switch (modifier.operation()) {
+            case ADD_VALUE -> Component.literal(signed(definition.effectiveFormat().format(displayedAmount, definition),
+                    displayedAmount));
+            case ADD_MULTIPLIED_BASE, ADD_MULTIPLIED_TOTAL -> percentageModifierAmount(
+                    modifier.operation(), modifier.amount());
+        };
+        return value.copy().withStyle(displayedAmount < 0.0D ? ChatFormatting.RED : ChatFormatting.GREEN);
+    }
+
+    private static void addUnknownRemainder(List<SourceTooltipLine> lines, ChangedStat changed,
+                                            Set<ResourceLocation> explained, AttributeInstance instance) {
+        List<AttributeModifier> unknown = changed.modifiers.values().stream()
+                .filter(modifier -> !explained.contains(modifier.id()))
+                .toList();
+        if (unknown.isEmpty()) return;
+        List<AttributeModifier> known = changed.modifiers.values().stream()
+                .filter(modifier -> explained.contains(modifier.id()))
+                .toList();
+        double knownValue = AttributeValueCalculator.calculate(instance, known);
+        double difference = changed.current - knownValue;
+        if (Math.abs(difference) <= 0.0000001D) return;
+
+        boolean onlyMultiplicative = unknown.stream()
+                .allMatch(modifier -> modifier.operation() != AttributeModifier.Operation.ADD_VALUE);
+        String amount = onlyMultiplicative && Math.abs(knownValue) > 0.0000001D
+                ? signedPercent(changed.current / knownValue - 1.0D)
+                : signed(changed.stat.definition().effectiveFormat().format(difference, changed.stat.definition()), difference);
+        Component text = Component.translatable("gui.characternotcontainer.unknown_source")
+                .append(Component.literal("  "))
+                .append(Component.literal(amount).withStyle(difference < 0.0D ? ChatFormatting.RED : ChatFormatting.GREEN));
+        addSource(lines, new ItemStack(Items.ENDER_EYE), text);
+    }
+
+    private static String signed(String formatted, double value) {
+        return value > 0.0D ? "+" + formatted : formatted;
+    }
+
+    private static String signedPercent(double value) {
+        String formatted = BigDecimal.valueOf(value * 100.0D)
+                .setScale(2, RoundingMode.HALF_UP)
+                .stripTrailingZeros()
+                .toPlainString() + "%";
+        return value > 0.0D ? "+" + formatted : formatted;
+    }
+
+    static Component percentageModifierAmount(AttributeModifier.Operation operation, double value) {
+        String percentage = signedPercent(value);
+        return operation == AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL
+                ? Component.translatable("gui.characternotcontainer.stacking", percentage)
+                : Component.literal(percentage);
     }
 
     private void renderAttributeIcon(GuiGraphics graphics, ResolvedStat stat, int x, int y) {
@@ -517,6 +681,8 @@ public final class CharacterEquipmentScreen extends Screen {
             graphics.blitSprite(icon, x, y, 16, 16);
             return;
         }
+        if (blitOptionalSprite(graphics, CharacterGuiSprites.STATS_FALLBACK_ICON,
+                new ScreenRect(x, y, 16, 16))) return;
         graphics.fill(x, y, x + 16, y + 16, 0xFF343B43);
         outline(graphics, new ScreenRect(x, y, 16, 16), 0xFF69737E);
         String fallback = displayName(stat).substring(0, 1).toUpperCase(Locale.ROOT);
@@ -524,13 +690,19 @@ public final class CharacterEquipmentScreen extends Screen {
     }
 
     private void renderStatsScrollbar(GuiGraphics graphics, ScreenRect viewport, int visible, int total) {
-        ScreenRect track = rect(spec.widget("stats_scrollbar"));
+        ScreenRect track = screenRect(STATS_SCROLLBAR);
         if (total <= visible) return;
-        graphics.fill(track.x() + track.width() / 2, track.y(), track.x() + track.width() / 2 + 1, track.y() + track.height(), 0xFF343A40);
+        if (!blitOptionalSprite(graphics, CharacterGuiSprites.STATS_SCROLLBAR_TRACK, track)) {
+            graphics.fill(track.x() + track.width() / 2, track.y(), track.x() + track.width() / 2 + 1,
+                    track.y() + track.height(), 0xFF343A40);
+        }
         int thumbHeight = Math.max(12, track.height() * visible / total);
         int travel = track.height() - thumbHeight;
         int thumbY = track.y() + travel * statsScroll / Math.max(1, total - visible);
-        graphics.fill(track.x() + 1, thumbY, track.x() + track.width() - 1, thumbY + thumbHeight, 0xFF87919B);
+        ScreenRect thumb = new ScreenRect(track.x() + 1, thumbY, Math.max(1, track.width() - 2), thumbHeight);
+        if (!blitOptionalSprite(graphics, CharacterGuiSprites.STATS_SCROLLBAR_THUMB, thumb)) {
+            graphics.fill(thumb.x(), thumb.y(), thumb.x() + thumb.width(), thumb.y() + thumb.height(), 0xFF87919B);
+        }
     }
 
     private void renderPicker(GuiGraphics graphics, int mouseX, int mouseY) {
@@ -538,8 +710,10 @@ public final class CharacterEquipmentScreen extends Screen {
         PickerGeometry geometry = pickerGeometry(candidates.size() + 1);
         ScreenRect overlay = geometry.bounds;
         List<PickerItemRender> itemRenders = new ArrayList<>();
-        graphics.fill(overlay.x(), overlay.y(), overlay.x() + overlay.width(), overlay.y() + overlay.height(), 0xF20B0E12);
-        outline(graphics, overlay, 0xFFE0BD73);
+        if (!blitOptionalSprite(graphics, CharacterGuiSprites.PICKER_BACKGROUND, overlay)) {
+            graphics.fill(overlay.x(), overlay.y(), overlay.x() + overlay.width(), overlay.y() + overlay.height(), 0xF20B0E12);
+            outline(graphics, overlay, 0xFFE0BD73);
+        }
         int cell = 20;
         int startX = geometry.startX;
         int startY = overlay.y() + 6;
@@ -553,14 +727,24 @@ public final class CharacterEquipmentScreen extends Screen {
             int y = startY + visibleIndex / geometry.columns * cell;
             ScreenRect cellRect = new ScreenRect(x, y, 18, 18);
             boolean hovered = cellRect.contains(mouseX, mouseY);
-            graphics.fill(x, y, x + 18, y + 18, hovered ? 0xFF59636D : 0xFF292F35);
-            outline(graphics, cellRect, hovered ? 0xFFFFFFFF : 0xFF59616A);
+            boolean customCell = blitOptionalSprite(graphics, CharacterGuiSprites.PICKER_CELL, cellRect);
+            if (!customCell) {
+                graphics.fill(x, y, x + 18, y + 18, 0xFF292F35);
+                outline(graphics, cellRect, 0xFF59616A);
+            }
+            if (hovered && !blitOptionalSprite(graphics, CharacterGuiSprites.PICKER_CELL_HOVERED, cellRect)) {
+                if (!customCell) graphics.fill(x, y, x + 18, y + 18, 0xFF59636D);
+                outline(graphics, cellRect, 0xFFFFFFFF);
+            }
             if (index == 0) {
-                graphics.drawCenteredString(font, "x", x + 9, y + 5, 0xFFFF7777);
+                if (!blitOptionalSprite(graphics, CharacterGuiSprites.PICKER_UNEQUIP,
+                        new ScreenRect(x + 1, y + 1, 16, 16))) {
+                    graphics.drawCenteredString(font, "x", x + 9, y + 5, 0xFFFF7777);
+                }
                 if (hovered) hoverTooltip = HoverTooltip.components(List.of(Component.translatable("gui.characternotcontainer.unequip")));
             } else {
                 ItemStack stack = candidates.get(index - 1).stack;
-                graphics.renderItem(stack, x + 1, y + 1);
+                renderPickerItem(graphics, stack, x + 1, y + 1);
                 itemRenders.add(new PickerItemRender(stack, x + 1, y + 1));
                 if (hovered) hoverTooltip = HoverTooltip.item(stack);
             }
@@ -569,11 +753,17 @@ public final class CharacterEquipmentScreen extends Screen {
             int trackX = overlay.x() + overlay.width() - 4;
             int trackY = startY;
             int trackHeight = geometry.visibleRows * cell - 2;
-            graphics.fill(trackX, trackY, trackX + 2, trackY + trackHeight, 0xFF30363D);
+            ScreenRect track = new ScreenRect(trackX, trackY, 2, trackHeight);
+            if (!blitOptionalSprite(graphics, CharacterGuiSprites.PICKER_SCROLLBAR_TRACK, track)) {
+                graphics.fill(track.x(), track.y(), track.x() + track.width(), track.y() + track.height(), 0xFF30363D);
+            }
             int thumbHeight = Math.max(6, trackHeight * geometry.visibleRows / geometry.totalRows);
             int travel = trackHeight - thumbHeight;
             int thumbY = trackY + travel * pickerScroll / Math.max(1, geometry.totalRows - geometry.visibleRows);
-            graphics.fill(trackX, thumbY, trackX + 2, thumbY + thumbHeight, 0xFF9A7A4E);
+            ScreenRect thumb = new ScreenRect(trackX, thumbY, 2, thumbHeight);
+            if (!blitOptionalSprite(graphics, CharacterGuiSprites.PICKER_SCROLLBAR_THUMB, thumb)) {
+                graphics.fill(thumb.x(), thumb.y(), thumb.x() + thumb.width(), thumb.y() + thumb.height(), 0xFF9A7A4E);
+            }
         }
         graphics.flush();
         RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
@@ -584,6 +774,23 @@ public final class CharacterEquipmentScreen extends Screen {
         }
         graphics.flush();
         graphics.pose().popPose();
+        RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
+    }
+
+    /**
+     * Some custom item renderers emit armor geometry far beyond vanilla's icon
+     * cube. Flush it while the cell scissor is active so it cannot escape the
+     * picker, then discard its depth before rendering later GUI layers.
+     */
+    private static void renderPickerItem(GuiGraphics graphics, ItemStack stack, int x, int y) {
+        graphics.flush();
+        graphics.enableScissor(x, y, x + 16, y + 16);
+        try {
+            graphics.renderItem(stack, x, y);
+            graphics.flush();
+        } finally {
+            graphics.disableScissor();
+        }
         RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
     }
 
@@ -634,7 +841,7 @@ public final class CharacterEquipmentScreen extends Screen {
             pickerScroll -= (int)Math.signum(scrollY);
             return true;
         }
-        if (picker == null && rect(spec.widget("stats_list")).contains(mouseX, mouseY)) {
+        if (picker == null && screenRect(STATS_LIST).contains(mouseX, mouseY)) {
             statsScroll -= (int)Math.signum(scrollY);
             return true;
         }
@@ -709,20 +916,18 @@ public final class CharacterEquipmentScreen extends Screen {
 
     private ScreenRect targetBounds(PickerTarget target, List<PlacedCurio> placements) {
         if (target instanceof VanillaTarget vanilla) {
-            for (EquipmentScreenSpec.Widget widget : spec.widgetsOfCustomType("character_not_container:equipment_hitbox")) {
-                if (vanillaSlot(widget.props.get("slot_id")) == vanilla.slot) return rect(widget);
-            }
+            return bodyBounds(vanilla.slot);
         } else if (target instanceof CurioTarget curio) {
             for (PlacedCurio placement : placements) {
                 if (placement.slot.type().equals(curio.slot.type()) && placement.slot.index() == curio.slot.index()
                         && placement.slot.cosmetic() == curio.slot.cosmetic()) return placement.bounds;
             }
         }
-        return rect(spec.widget("equipment_picker_overlay_reference"));
+        return screenRect(PICKER_FALLBACK);
     }
 
     private PickerGeometry pickerGeometry(int entries) {
-        ScreenRect anchor = pickerAnchor == null ? rect(spec.widget("equipment_picker_overlay_reference")) : pickerAnchor;
+        ScreenRect anchor = pickerAnchor == null ? screenRect(PICKER_FALLBACK) : pickerAnchor;
         EquipmentPickerLayout layout = EquipmentPickerLayout.calculate(anchor, width, height, entries,
                 CharacterConfigManager.general().equipmentPickerColumns,
                 CharacterConfigManager.general().equipmentPickerVisibleRows,
@@ -731,20 +936,25 @@ public final class CharacterEquipmentScreen extends Screen {
                 layout.columns(), layout.visibleRows(), layout.totalRows());
     }
 
-    private ScreenRect rect(EquipmentScreenSpec.Widget widget) {
-        return new ScreenRect(layoutX + scaled(widget.x), layoutY + scaled(widget.y), scaled(widget.w), scaled(widget.h));
+    private ScreenRect screenRect(ScreenRect raw) {
+        return new ScreenRect(layoutX + scaled(raw.x()), layoutY + scaled(raw.y()), scaled(raw.width()), scaled(raw.height()));
     }
 
     private int scaled(int value) { return (int)Math.round(value * layoutScale); }
 
-    private static EquipmentSlot vanillaSlot(String id) {
-        return switch (id == null ? "" : id) {
-            case "head" -> EquipmentSlot.HEAD;
-            case "chest" -> EquipmentSlot.CHEST;
-            case "legs" -> EquipmentSlot.LEGS;
-            case "feet" -> EquipmentSlot.FEET;
-            default -> null;
+    private ScreenRect bodyBounds(EquipmentSlot slot) {
+        ScreenRect raw = switch (slot) {
+            case HEAD -> new ScreenRect(250, 35, 60, 52);
+            case CHEST -> new ScreenRect(224, 87, 112, 88);
+            case LEGS -> new ScreenRect(241, 171, 78, 75);
+            case FEET -> new ScreenRect(241, 246, 78, 56);
+            default -> throw new IllegalArgumentException("Not a body armor slot: " + slot);
         };
+        return screenRect(raw);
+    }
+
+    private static List<EquipmentSlot> bodySlots() {
+        return List.of(EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET);
     }
 
     private static ResourceLocation emptyIcon(EquipmentSlot slot) {
@@ -772,16 +982,22 @@ public final class CharacterEquipmentScreen extends Screen {
         return Character.toUpperCase(value.charAt(0)) + value.substring(1).replace('_', ' ');
     }
 
-    private static List<String> aliases(EquipmentScreenSpec.Widget anchor) {
-        String value = anchor.props.getOrDefault("slot_type_aliases", "");
-        return java.util.Arrays.stream(value.split(",")).map(String::trim).map(text -> text.toLowerCase(Locale.ROOT)).filter(text -> !text.isEmpty()).toList();
-    }
-
     private static void outline(GuiGraphics graphics, ScreenRect rect, int color) {
         graphics.fill(rect.x(), rect.y(), rect.x() + rect.width(), rect.y() + 1, color);
         graphics.fill(rect.x(), rect.y(), rect.x() + 1, rect.y() + rect.height(), color);
         graphics.fill(rect.x(), rect.y() + rect.height() - 1, rect.x() + rect.width(), rect.y() + rect.height(), color);
         graphics.fill(rect.x() + rect.width() - 1, rect.y(), rect.x() + rect.width(), rect.y() + rect.height(), color);
+    }
+
+    private static boolean blitOptionalSprite(GuiGraphics graphics, ResourceLocation sprite, ScreenRect bounds) {
+        if (!hasGuiSprite(sprite)) return false;
+        graphics.blitSprite(sprite, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        return true;
+    }
+
+    private static boolean hasGuiSprite(ResourceLocation sprite) {
+        return Minecraft.getInstance().getResourceManager()
+                .getResource(CharacterGuiSprites.textureFile(sprite)).isPresent();
     }
 
     @SuppressWarnings("deprecation")
@@ -859,9 +1075,14 @@ public final class CharacterEquipmentScreen extends Screen {
     private record PickerGeometry(ScreenRect bounds, int startX, int columns, int visibleRows, int totalRows) {}
     private record PickerItemRender(ItemStack stack, int x, int y) {}
     private record ChangedStat(ResolvedStat stat, double base, double current,
-                               Set<AttributeModifier.Operation> operations) {}
+                               Map<ResourceLocation, AttributeModifier> modifiers) {
+        private ChangedStat {
+            modifiers = Map.copyOf(modifiers);
+        }
+    }
     private record Contribution(ItemStack stack, AttributeModifier modifier) {}
     private record SourceTooltipLine(ItemStack stack, Component text) {}
+    private record ModifierKey(ResourceLocation attributeId, ResourceLocation modifierId) {}
 
     private record HoverTooltip(ItemStack item, List<Component> components, List<SourceTooltipLine> sources) {
         static HoverTooltip item(ItemStack stack) { return new HoverTooltip(stack, List.of(), List.of()); }
@@ -876,7 +1097,7 @@ public final class CharacterEquipmentScreen extends Screen {
         private static void renderSources(GuiGraphics graphics, int mouseX, int mouseY, List<SourceTooltipLine> sources) {
             var font = Minecraft.getInstance().font;
             int rowHeight = 18;
-            int tooltipWidth = sources.stream().mapToInt(line -> 20 + font.width(line.text)).max().orElse(20);
+            int tooltipWidth = sources.stream().mapToInt(line -> (line.stack.isEmpty() ? 0 : 20) + font.width(line.text)).max().orElse(20);
             int tooltipHeight = sources.size() * rowHeight;
             int x = mouseX + TooltipRenderUtil.MOUSE_OFFSET;
             int y = mouseY - TooltipRenderUtil.MOUSE_OFFSET;
@@ -885,13 +1106,23 @@ public final class CharacterEquipmentScreen extends Screen {
             y = Math.max(6, y);
 
             graphics.pose().pushPose();
-            TooltipRenderUtil.renderTooltipBackground(graphics, x, y, tooltipWidth, tooltipHeight, 400);
-            graphics.pose().translate(0.0F, 0.0F, 400.0F);
+            if (hasGuiSprite(CharacterGuiSprites.SOURCE_TOOLTIP_BACKGROUND)) {
+                graphics.pose().translate(0.0F, 0.0F, 400.0F);
+                blitOptionalSprite(graphics, CharacterGuiSprites.SOURCE_TOOLTIP_BACKGROUND,
+                        new ScreenRect(x - 3, y - 4, tooltipWidth + 6, tooltipHeight + 8));
+            } else {
+                TooltipRenderUtil.renderTooltipBackground(graphics, x, y, tooltipWidth, tooltipHeight, 400);
+                graphics.pose().translate(0.0F, 0.0F, 400.0F);
+            }
             for (int row = 0; row < sources.size(); row++) {
                 SourceTooltipLine line = sources.get(row);
                 int rowY = y + row * rowHeight;
-                graphics.renderItem(line.stack, x, rowY + 1);
-                graphics.drawString(font, line.text, x + 20, rowY + 5, 0xFFFFFFFF, true);
+                int textX = x;
+                if (!line.stack.isEmpty()) {
+                    graphics.renderItem(line.stack, x, rowY + 1);
+                    textX += 20;
+                }
+                graphics.drawString(font, line.text, textX, rowY + 5, 0xFFFFFFFF, true);
             }
             graphics.pose().popPose();
         }
