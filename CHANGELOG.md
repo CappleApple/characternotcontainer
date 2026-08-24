@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 - 2026-08-24
+
+### Changed
+
+- Expanded the default Curios slot bindings with `spellbook` and `sheath` on the built-in belt anchor.
+
 ## 1.1 - 2026-08-24
 
 ### Added

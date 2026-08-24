@@ -30,9 +30,30 @@ The interface and all anchor positions are built into the mod. `equipment_screen
 ```json
 {
   "slots": {
+    "head": "head",
+    "hat": "head",
+    "face": "head",
+    "mask": "head",
+    "neck": "neck",
     "necklace": "neck",
+    "amulet": "neck",
+    "back": "back",
+    "cape": "back",
+    "wings": "back",
+    "belt": "belt",
+    "spellbook": "belt",
+    "waist": "belt",
+    "sheath": "belt",
+    "body": "belt",
+    "hands": "hands",
+    "hand": "hands",
     "ring": "hands",
-    "belt": "belt"
+    "bracelet": "hands",
+    "feet": "feet",
+    "shoes": "feet",
+    "anklet": "feet",
+    "charm": "other",
+    "curio": "other"
   }
 }
 ```

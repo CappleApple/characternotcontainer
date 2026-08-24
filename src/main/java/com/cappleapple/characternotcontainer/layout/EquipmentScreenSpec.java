@@ -44,7 +44,7 @@ public final class EquipmentScreenSpec {
         bind(result, CurioAnchor.HEAD, "head", "hat", "face", "mask");
         bind(result, CurioAnchor.NECK, "neck", "necklace", "amulet");
         bind(result, CurioAnchor.BACK, "back", "cape", "wings");
-        bind(result, CurioAnchor.BELT, "belt", "waist", "body");
+        bind(result, CurioAnchor.BELT, "belt", "spellbook", "waist", "sheath", "body");
         bind(result, CurioAnchor.HANDS, "hands", "hand", "ring", "bracelet");
         bind(result, CurioAnchor.FEET, "feet", "shoes", "anklet");
         bind(result, CurioAnchor.OTHER, "charm", "curio");
