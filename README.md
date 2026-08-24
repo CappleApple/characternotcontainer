@@ -249,13 +249,6 @@ The cosmetics/equipment toggle sprites replace the complete button state, includ
 
 Dynamic GUI elements can provide a sibling `.png.mcmeta` file using Minecraft GUI nine-slice scaling metadata to prevent borders from stretching.
 
-Reload resource packs with:
-
-```text
-F3 + T
-```
-
-after changing GUI sprites.
 
 ## API
 
