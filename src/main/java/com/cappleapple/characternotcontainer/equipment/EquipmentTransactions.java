@@ -1,75 +1,69 @@
 package com.cappleapple.characternotcontainer.equipment;
 
-import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.items.IItemHandler;
+import net.neoforged.neoforge.items.ItemHandlerHelper;
 
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public final class EquipmentTransactions {
     private EquipmentTransactions() {}
 
-    public static boolean swapFromInventory(Inventory inventory, int sourceIndex, ItemStack equipped,
+    public static boolean swapFromInventory(IItemHandler inventory, int sourceIndex, Supplier<ItemStack> equipped,
                                             Consumer<ItemStack> equipAction) {
-        if (sourceIndex < 0 || sourceIndex >= inventory.items.size()) return false;
-        ItemStack source = inventory.items.get(sourceIndex);
-        if (source.isEmpty()) return false;
-        ItemStack toEquip = source.copy();
-        toEquip.setCount(1);
+        if (sourceIndex < 0 || sourceIndex >= inventory.getSlots()) return false;
+        ItemStack previouslyEquipped = equipped.get().copy();
+        ItemStack simulated = inventory.extractItem(sourceIndex, 1, true);
+        if (simulated.isEmpty()) return false;
 
-        if (source.getCount() == 1) {
-            inventory.items.set(sourceIndex, equipped.copy());
-        } else if (equipped.isEmpty()) {
-            source.shrink(1);
-        } else {
-            int destination = findDestination(inventory, equipped, sourceIndex);
-            if (destination < 0) return false;
-            insertAt(inventory, destination, equipped);
-            source.shrink(1);
+        ItemStack extracted = inventory.extractItem(sourceIndex, 1, false);
+        if (extracted.isEmpty() || !ItemStack.isSameItemSameComponents(extracted, simulated)) {
+            if (!extracted.isEmpty()) insert(inventory, extracted);
+            return false;
         }
-        equipAction.accept(toEquip);
-        inventory.setChanged();
-        return true;
+
+        boolean sourceAliasesTarget = !ItemStack.matches(previouslyEquipped, equipped.get());
+        if (sourceAliasesTarget) {
+            equipAction.accept(extracted);
+            return true;
+        }
+        if (replaceEquipped(inventory, extracted, equipped, equipAction)) return true;
+        insert(inventory, extracted);
+        return false;
     }
 
-    public static boolean unequip(Inventory inventory, ItemStack equipped, Consumer<ItemStack> equipAction) {
-        if (equipped.isEmpty()) return true;
-        int destination = findDestination(inventory, equipped, -1);
-        if (destination < 0) return false;
-        insertAt(inventory, destination, equipped);
-        equipAction.accept(ItemStack.EMPTY);
-        inventory.setChanged();
-        return true;
+    public static boolean unequip(IItemHandler inventory, Supplier<ItemStack> equipped, Consumer<ItemStack> equipAction) {
+        return replaceEquipped(inventory, ItemStack.EMPTY, equipped, equipAction);
     }
 
-    public static boolean canInsert(Inventory inventory, ItemStack stack) {
-        return stack.isEmpty() || findDestination(inventory, stack, -1) >= 0;
+    public static boolean equipExternal(IItemHandler inventory, ItemStack newEquipment,
+                                        Supplier<ItemStack> equipped, Consumer<ItemStack> equipAction) {
+        return replaceEquipped(inventory, newEquipment, equipped, equipAction);
     }
 
-    public static boolean insert(Inventory inventory, ItemStack stack) {
+    private static boolean replaceEquipped(IItemHandler inventory, ItemStack newEquipment,
+                                           Supplier<ItemStack> equipped, Consumer<ItemStack> equipAction) {
+        ItemStack previous = equipped.get().copy();
+        if (previous.isEmpty()) {
+            equipAction.accept(newEquipment);
+            return true;
+        }
+
+        ItemStack blocker = previous.copy();
+        blocker.setCount(previous.getMaxStackSize());
+        equipAction.accept(blocker);
+        boolean stored = canInsert(inventory, previous) && insert(inventory, previous);
+        equipAction.accept(stored ? newEquipment : previous);
+        return stored;
+    }
+
+    private static boolean canInsert(IItemHandler inventory, ItemStack stack) {
+        return stack.isEmpty() || ItemHandlerHelper.insertItemStacked(inventory, stack.copy(), true).isEmpty();
+    }
+
+    private static boolean insert(IItemHandler inventory, ItemStack stack) {
         if (stack.isEmpty()) return true;
-        int destination = findDestination(inventory, stack, -1);
-        if (destination < 0) return false;
-        insertAt(inventory, destination, stack);
-        inventory.setChanged();
-        return true;
-    }
-
-    private static int findDestination(Inventory inventory, ItemStack stack, int excluded) {
-        for (int index = 0; index < inventory.items.size(); index++) {
-            if (index == excluded) continue;
-            ItemStack existing = inventory.items.get(index);
-            if (!existing.isEmpty() && ItemStack.isSameItemSameComponents(existing, stack)
-                    && existing.getCount() + stack.getCount() <= existing.getMaxStackSize()) return index;
-        }
-        for (int index = 0; index < inventory.items.size(); index++) {
-            if (index != excluded && inventory.items.get(index).isEmpty()) return index;
-        }
-        return -1;
-    }
-
-    private static void insertAt(Inventory inventory, int index, ItemStack stack) {
-        ItemStack existing = inventory.items.get(index);
-        if (existing.isEmpty()) inventory.items.set(index, stack.copy());
-        else existing.grow(stack.getCount());
+        return ItemHandlerHelper.insertItemStacked(inventory, stack.copy(), false).isEmpty();
     }
 }

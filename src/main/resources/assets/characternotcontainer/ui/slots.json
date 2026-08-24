@@ -1,0 +1,43 @@
+{
+  "slots": {
+    "head": {
+      "x": 319,
+      "y": 52
+    },
+    "neck": {
+      "x": 271,
+      "y": 91
+    },
+    "back": {
+      "x": 196,
+      "y": 108
+    },
+    "belt": {
+      "x": 271,
+      "y": 164
+    },
+    "hands": {
+      "x": 199,
+      "y": 165,
+      "alternate": "right_hand"
+    },
+    "left_hand": {
+      "x": 199,
+      "y": 165
+    },
+    "right_hand": {
+      "x": 342,
+      "y": 165
+    },
+    "feet": {
+      "x": 322,
+      "y": 260
+    },
+    "other": {
+      "x": 350,
+      "y": 205,
+      "direction": "vertical",
+      "wrap": 4
+    }
+  }
+}

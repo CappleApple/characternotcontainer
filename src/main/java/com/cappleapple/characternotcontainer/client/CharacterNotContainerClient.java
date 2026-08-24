@@ -4,12 +4,15 @@ import com.cappleapple.characternotcontainer.CharacterNotContainer;
 import com.cappleapple.characternotcontainer.config.CharacterConfigManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
@@ -28,6 +31,7 @@ public final class CharacterNotContainerClient {
         modBus.addListener(CharacterNotContainerClient::registerReloadListener);
         NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::clientTick);
         NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::redirectCuriosInventoryButton);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, CharacterNotContainerClient::openCharacterFromInventory);
         NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::playerLoggedIn);
         NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::playerLoggedOut);
     }
@@ -79,6 +83,43 @@ public final class CharacterNotContainerClient {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null) return;
         minecraft.setScreen(new CharacterEquipmentScreen(minecraft.player));
+    }
+
+    static void openInventoryScreen() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null) return;
+        while (ClientKeyMappings.OPEN_CHARACTER.consumeClick()) {}
+        if (minecraft.gameMode != null && minecraft.gameMode.isServerControlledInventory()) {
+            minecraft.setScreen(null);
+            minecraft.player.sendOpenInventory();
+        } else {
+            minecraft.setScreen(new InventoryScreen(minecraft.player));
+        }
+    }
+
+    private static void openCharacterFromInventory(ScreenEvent.KeyPressed.Post event) {
+        if (!CharacterConfigManager.general().enableSeparateKeybind
+                || !ClientKeyMappings.OPEN_CHARACTER.matches(event.getKeyCode(), event.getScanCode())
+                || !isPlayerInventoryScreen(event.getScreen())
+                || hasFocusedTextInput(event.getScreen())) return;
+        event.setCanceled(true);
+        Screen inventoryScreen = event.getScreen();
+        Minecraft minecraft = Minecraft.getInstance();
+        minecraft.execute(() -> {
+            if (minecraft.screen == inventoryScreen) openCharacterScreen();
+        });
+    }
+
+    private static boolean isPlayerInventoryScreen(Screen screen) {
+        if (screen instanceof InventoryScreen) return true;
+        if (screen instanceof CreativeModeInventoryScreen creative) return creative.isInventoryOpen();
+        Minecraft minecraft = Minecraft.getInstance();
+        return minecraft.player != null && screen instanceof AbstractContainerScreen<?> container
+                && container.getMenu() == minecraft.player.inventoryMenu;
+    }
+
+    private static boolean hasFocusedTextInput(Screen screen) {
+        return screen.getFocused() instanceof EditBox editBox && editBox.canConsumeInput();
     }
 
     private static void redirectCuriosInventoryButton(ScreenEvent.MouseButtonPressed.Pre event) {

@@ -5,6 +5,7 @@ import com.cappleapple.characternotcontainer.compat.needsnotnecessities.NeedsNot
 import com.cappleapple.characternotcontainer.equipment.EquipmentTargetAccess;
 import com.cappleapple.characternotcontainer.equipment.EquipmentTransactions;
 import com.cappleapple.characternotcontainer.equipment.NearbyEquipmentSources;
+import com.cappleapple.characternotcontainer.equipment.PlayerInventoryAccess;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -14,6 +15,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
+import net.neoforged.neoforge.items.IItemHandler;
 
 import java.util.Optional;
 
@@ -21,7 +23,7 @@ public final class EquipmentNetwork {
     private EquipmentNetwork() {}
 
     public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("4").optional();
+        var registrar = event.registrar("5").optional();
         registrar.playToServer(EquipmentChangePayload.TYPE, EquipmentChangePayload.STREAM_CODEC, EquipmentNetwork::handleChange);
         registrar.playToServer(NearbyEquipmentRequestPayload.TYPE, NearbyEquipmentRequestPayload.STREAM_CODEC,
                 EquipmentNetwork::handleNearbyRequest);
@@ -53,19 +55,21 @@ public final class EquipmentNetwork {
     }
 
     private static boolean change(ServerPlayer player, EquipmentChangePayload payload, EquipmentTargetAccess target) {
+        IItemHandler inventory = PlayerInventoryAccess.handler(player);
         return switch (payload.sourceKind()) {
             case UNEQUIP -> target.canRemove()
-                    && EquipmentTransactions.unequip(player.getInventory(), target.equipped(), target::set);
-            case PLAYER_INVENTORY -> changeFromPlayerInventory(player, payload.sourceIndex(), target);
+                    && EquipmentTransactions.unequip(inventory, target::equipped, target::set);
+            case PLAYER_INVENTORY -> changeFromPlayerInventory(inventory, payload.sourceIndex(), target);
             case NEARBY -> NearbyEquipmentSources.change(player, payload, target);
         };
     }
 
-    private static boolean changeFromPlayerInventory(ServerPlayer player, int inventoryIndex, EquipmentTargetAccess target) {
-        if (inventoryIndex < 0 || inventoryIndex >= player.getInventory().items.size() || !target.canRemove()) return false;
-        ItemStack candidate = player.getInventory().items.get(inventoryIndex);
+    private static boolean changeFromPlayerInventory(IItemHandler inventory, int inventoryIndex,
+                                                     EquipmentTargetAccess target) {
+        if (inventoryIndex < 0 || inventoryIndex >= inventory.getSlots() || !target.canRemove()) return false;
+        ItemStack candidate = inventory.getStackInSlot(inventoryIndex);
         if (candidate.isEmpty() || !target.accepts(candidate)) return false;
-        return EquipmentTransactions.swapFromInventory(player.getInventory(), inventoryIndex, target.equipped(), target::set);
+        return EquipmentTransactions.swapFromInventory(inventory, inventoryIndex, target::equipped, target::set);
     }
 
     private static void handleNearbyRequest(NearbyEquipmentRequestPayload request, IPayloadContext context) {

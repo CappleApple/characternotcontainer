@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2 - 2026-08-24
+
+### Added
+
+- Added `slots.json` for moving existing Curios anchors and defining new named anchors.
+- Added inventory-key and character-key navigation from the character screen back to the inventory screen.
+- Added character-key navigation from player inventory screens to the character screen while preserving focused search and text input.
+
+### Changed
+
+- Changed player-inventory picker discovery and equipment transactions to use NeoForge's player item-handler capability, allowing inventory-overhaul mods to expose additional slots generically.
+
+### Fixed
+
+- Fixed inventory-overhaul handlers being hidden by NeoForge's earlier vanilla player item-handler provider.
+
 ## 1.1.1 - 2026-08-24
 
 ### Changed

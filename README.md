@@ -9,11 +9,12 @@ Character Not Container is a NeoForge 1.21.1 character and equipment screen. It 
 * Active meals use the food's item icon and name. Modifiers that cannot be identified are combined into a single `???` remainder rather than attributed incorrectly.
 * Renders the real local player with their skin, armor, animation, render layers, and mouse-driven head/body tracking.
 * Uses broad head, chest, legs, and feet regions on the player model as equipment controls instead of displaying a traditional armor grid.
-* Opens a picker beside the selected equipment region containing compatible items from the player inventory and nearby equipment sources.
+* Opens a picker beside the selected equipment region containing compatible items from the player's NeoForge item-handler inventory and nearby equipment sources.
 * Supports nearby armor stands and blocks or entities exposing NeoForge's generic item-handler capability when the mod is installed on the server.
 * Supports dynamic Curios slots, including multiple slots of the same type and mod-added slot types.
 * Uses Curios' native slot icons and validation.
 * Supports switching between functional and cosmetic Curios equipment directly from the character screen.
+* Opens the character screen from the player inventory with the same key without intercepting focused search boxes.
 * Curios is fully optional.
 
 ## Configuration
@@ -28,13 +29,12 @@ config/characternotcontainer/
 general.json
 stats.json
 equipment_screen.json
+slots.json
 ```
 
 ### Equipment anchors
 
-The interface and anchor positions are built into the mod.
-
-`equipment_screen.json` maps Curios slot-type IDs to fixed character-screen anchors. The generated file includes mappings for common Curios slot names:
+`equipment_screen.json` maps Curios slot-type IDs to named character-screen anchors. The generated file includes mappings for common Curios slot names:
 
 ```json
 {
@@ -67,21 +67,43 @@ The interface and anchor positions are built into the mod.
 }
 ```
 
-Valid anchors are:
+`slots.json` defines those anchors. Coordinates use the screen's logical 400 x 320 layout:
 
-```text
-head
-neck
-back
-belt
-hands
-left_hand
-right_hand
-feet
-other
+```json
+{
+  "slots": {
+    "head": {
+      "x": 319,
+      "y": 52
+    },
+    "hands": {
+      "x": 199,
+      "y": 165,
+      "alternate": "right_hand"
+    },
+    "right_hand": {
+      "x": 342,
+      "y": 165
+    },
+    "other": {
+      "x": 350,
+      "y": 205,
+      "direction": "vertical",
+      "wrap": 4
+    }
+  }
+}
 ```
 
-Add another slot ID as a key to bind a modded Curios type to an anchor. Namespaced IDs are supported. Unknown slot types use `other`.
+Add another entry to `slots.json` to create an anchor, then use that entry's name as the value for a Curios slot type in `equipment_screen.json`. Namespaced Curios slot IDs are supported. Missing anchor bindings use `other`, which must remain defined.
+
+Each anchor supports:
+
+* `x` and `y` for its first slot.
+* `direction` as `horizontal` or `vertical` for additional slots using the same anchor. The default is `horizontal`.
+* `wrap` for the number of slots before starting a new row or column. The default is `2`.
+* `spacing` for the distance between repeated slots. The default is `20`.
+* `alternate` to alternate repeated slots with another named anchor.
 
 Older UI-builder and movable-anchor configurations are migrated automatically and deprecated fields are removed.
 
@@ -179,7 +201,7 @@ Operators can run:
 
 after editing `general.json` or `stats.json`.
 
-`equipment_screen.json` is re-read whenever the character screen opens.
+`equipment_screen.json` and `slots.json` are re-read whenever the character screen opens.
 
 Attribute changes are measured against the player's current attribute-instance base value. If another mod replaces that base value directly, the replacement becomes the new baseline.
 

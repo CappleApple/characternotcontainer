@@ -12,6 +12,9 @@ import com.cappleapple.characternotcontainer.layout.EquipmentLayoutLoader;
 import com.cappleapple.characternotcontainer.layout.EquipmentPickerLayout;
 import com.cappleapple.characternotcontainer.layout.EquipmentScreenSpec;
 import com.cappleapple.characternotcontainer.layout.ScreenRect;
+import com.cappleapple.characternotcontainer.layout.SlotLayoutLoader;
+import com.cappleapple.characternotcontainer.layout.SlotLayoutSpec;
+import com.cappleapple.characternotcontainer.equipment.PlayerInventoryAccess;
 import com.cappleapple.characternotcontainer.network.EquipmentChangePayload;
 import com.cappleapple.characternotcontainer.network.NearbyEquipmentRequestPayload;
 import com.cappleapple.characternotcontainer.network.NearbyEquipmentResponsePayload;
@@ -39,6 +42,7 @@ import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.neoforged.fml.ModList;
+import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.registration.NetworkRegistry;
 import org.lwjgl.opengl.GL11;
@@ -76,6 +80,7 @@ public final class CharacterEquipmentScreen extends Screen {
 
     private final Player player;
     private EquipmentScreenSpec spec;
+    private SlotLayoutSpec slotLayout;
     private double layoutScale;
     private int layoutX;
     private int layoutY;
@@ -102,6 +107,7 @@ public final class CharacterEquipmentScreen extends Screen {
     @Override
     protected void init() {
         spec = EquipmentLayoutLoader.load();
+        slotLayout = SlotLayoutLoader.load();
         layoutScale = Math.min(1.0D, Math.min((width - 12.0D) / SCREEN_WIDTH, (height - 12.0D) / SCREEN_HEIGHT));
         layoutScale = Math.max(0.4D, layoutScale);
         layoutX = (width - scaled(SCREEN_WIDTH)) / 2;
@@ -359,48 +365,24 @@ public final class CharacterEquipmentScreen extends Screen {
     }
 
     private List<PlacedCurio> placedCurios() {
-        Map<EquipmentScreenSpec.CurioAnchor, Integer> usage = new HashMap<>();
+        Map<String, Integer> anchorOccurrences = new HashMap<>();
+        Map<String, Integer> placementUsage = new HashMap<>();
         List<PlacedCurio> result = new ArrayList<>();
-        int handIndex = 0;
         for (CuriosClientIntegration.CurioSlotView slot : curiosSlots) {
             String type = slot.type().toLowerCase(Locale.ROOT);
-            EquipmentScreenSpec.CurioAnchor anchor = spec.anchorFor(type);
-            if (anchor == EquipmentScreenSpec.CurioAnchor.HANDS) {
-                anchor = handIndex++ % 2 == 0
-                        ? EquipmentScreenSpec.CurioAnchor.LEFT_HAND
-                        : EquipmentScreenSpec.CurioAnchor.RIGHT_HAND;
-            }
-            int used = usage.merge(anchor, 1, Integer::sum) - 1;
-            ScreenRect base = curioAnchor(anchor);
-            if (anchor == EquipmentScreenSpec.CurioAnchor.OTHER) {
-                int gap = scaled(2);
-                int slotSize = 18;
-                int rows = 4;
-                int x = base.x() + used / rows * (slotSize + gap);
-                int y = base.y() + used % rows * (slotSize + gap);
-                result.add(new PlacedCurio(slot, new ScreenRect(x, y, slotSize, slotSize)));
-                continue;
-            }
-            int spacing = Math.max(20, scaled(20));
-            int x = base.x() + (used % 2) * spacing;
-            int y = base.y() + (used / 2) * spacing;
+            String configuredAnchor = spec.anchorFor(type);
+            int occurrence = anchorOccurrences.merge(configuredAnchor, 1, Integer::sum) - 1;
+            String targetAnchor = slotLayout.targetFor(configuredAnchor, occurrence);
+            int used = placementUsage.merge(targetAnchor, 1, Integer::sum) - 1;
+            SlotLayoutSpec.Anchor anchor = slotLayout.anchor(targetAnchor);
+            SlotLayoutSpec.GridOffset offset = slotLayout.offset(anchor, used);
+            ScreenRect base = screenRect(new ScreenRect(anchor.x, anchor.y, 18, 18));
+            int spacing = anchor.spacing;
+            int x = base.x() + offset.x() * spacing;
+            int y = base.y() + offset.y() * spacing;
             result.add(new PlacedCurio(slot, new ScreenRect(x, y, 18, 18)));
         }
         return result;
-    }
-
-    private ScreenRect curioAnchor(EquipmentScreenSpec.CurioAnchor anchor) {
-        ScreenRect fixed = switch (anchor) {
-            case HEAD -> new ScreenRect(319, 52, 18, 18);
-            case NECK -> new ScreenRect(271, 91, 18, 18);
-            case BACK -> new ScreenRect(196, 108, 18, 18);
-            case BELT -> new ScreenRect(271, 164, 18, 18);
-            case HANDS, LEFT_HAND -> new ScreenRect(199, 165, 18, 18);
-            case RIGHT_HAND -> new ScreenRect(342, 165, 18, 18);
-            case FEET -> new ScreenRect(322, 260, 18, 18);
-            case OTHER -> new ScreenRect(350, 205, 18, 18);
-        };
-        return screenRect(fixed);
     }
 
     private PickerTarget hoveredEquipmentTarget(double mouseX, double mouseY, List<PlacedCurio> placements) {
@@ -850,6 +832,11 @@ public final class CharacterEquipmentScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (minecraft != null && (minecraft.options.keyInventory.matches(keyCode, scanCode)
+                || ClientKeyMappings.OPEN_CHARACTER.matches(keyCode, scanCode))) {
+            CharacterNotContainerClient.openInventoryScreen();
+            return true;
+        }
         if (keyCode == 256 && picker != null) {
             closePicker();
             return true;
@@ -859,10 +846,12 @@ public final class CharacterEquipmentScreen extends Screen {
 
     private List<InventoryCandidate> candidates(PickerTarget target) {
         List<InventoryCandidate> result = new ArrayList<>();
-        for (int index = 0; index < player.getInventory().items.size(); index++) {
-            ItemStack stack = player.getInventory().items.get(index);
+        IItemHandler inventory = PlayerInventoryAccess.handler(player);
+        for (int index = 0; index < inventory.getSlots(); index++) {
+            ItemStack stack = inventory.getStackInSlot(index);
             if (!stack.isEmpty() && target.accepts(stack)) {
-                result.add(new InventoryCandidate(EquipmentChangePayload.SourceKind.PLAYER_INVENTORY, index, 0, stack));
+                result.add(new InventoryCandidate(EquipmentChangePayload.SourceKind.PLAYER_INVENTORY,
+                        index, 0, stack.copy()));
             }
         }
         for (NearbyEquipmentResponsePayload.Entry entry : nearbyEquipment) {

@@ -136,7 +136,8 @@ tasks.register('verifyReleaseJarContents') {
         def zip = new java.util.zip.ZipFile(jarFile)
         try {
             ['META-INF/neoforge.mods.toml', 'assets/characternotcontainer/lang/en_us.json',
-             'assets/characternotcontainer/ui/equipment_screen.json'].each {
+             'assets/characternotcontainer/ui/equipment_screen.json',
+             'assets/characternotcontainer/ui/slots.json'].each {
                 if (zip.getEntry(it) == null) throw new GradleException("Missing required JAR entry: ${it}")
             }
         } finally {

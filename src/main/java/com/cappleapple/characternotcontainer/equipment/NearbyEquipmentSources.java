@@ -83,8 +83,7 @@ public final class NearbyEquipmentSources {
         if (simulated.isEmpty() || !ItemStack.isSameItemSameComponents(simulated, candidate.displayStack)
                 || !target.accepts(simulated)) return false;
 
-        ItemStack equipped = target.equipped();
-        if (!EquipmentTransactions.canInsert(player.getInventory(), equipped)) return false;
+        IItemHandler playerInventory = PlayerInventoryAccess.handler(player);
         ItemStack extracted = candidate.source.extractOne(player, false);
         if (extracted.isEmpty() || !ItemStack.isSameItemSameComponents(extracted, simulated)) {
             if (!extracted.isEmpty() && !candidate.source.restore(player, extracted)) {
@@ -95,7 +94,7 @@ public final class NearbyEquipmentSources {
                     player.getGameProfile().getName());
             return false;
         }
-        if (!EquipmentTransactions.insert(player.getInventory(), equipped)) {
+        if (!EquipmentTransactions.equipExternal(playerInventory, extracted, target::equipped, target::set)) {
             if (!candidate.source.restore(player, extracted)) {
                 CharacterNotContainer.LOGGER.error("Could not roll back a nearby extraction for {}",
                         player.getGameProfile().getName());
@@ -103,7 +102,6 @@ public final class NearbyEquipmentSources {
             CharacterNotContainer.LOGGER.error("Could not store previously validated equipment for {}", player.getGameProfile().getName());
             return false;
         }
-        target.set(extracted);
         SESSIONS.remove(player.getUUID());
         return true;
     }

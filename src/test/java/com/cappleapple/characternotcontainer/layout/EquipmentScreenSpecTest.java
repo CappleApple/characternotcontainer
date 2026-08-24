@@ -13,14 +13,22 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class EquipmentScreenSpecTest {
     @Test
-    void bindsCommonCuriosSlotTypesToFixedAnchors() {
+    void bindsCommonCuriosSlotTypesToNamedAnchors() {
         EquipmentScreenSpec spec = EquipmentScreenSpec.defaults();
-        assertEquals(EquipmentScreenSpec.CurioAnchor.NECK, spec.anchorFor("necklace"));
-        assertEquals(EquipmentScreenSpec.CurioAnchor.BELT, spec.anchorFor("spellbook"));
-        assertEquals(EquipmentScreenSpec.CurioAnchor.BELT, spec.anchorFor("example:sheath"));
-        assertEquals(EquipmentScreenSpec.CurioAnchor.HANDS, spec.anchorFor("example:ring"));
-        assertEquals(EquipmentScreenSpec.CurioAnchor.OTHER, spec.anchorFor("example:unknown_slot"));
+        assertEquals("neck", spec.anchorFor("necklace"));
+        assertEquals("belt", spec.anchorFor("spellbook"));
+        assertEquals("belt", spec.anchorFor("example:sheath"));
+        assertEquals("hands", spec.anchorFor("example:ring"));
+        assertEquals("other", spec.anchorFor("example:unknown_slot"));
         spec.validate();
+    }
+
+    @Test
+    void acceptsCustomAnchorNames() {
+        EquipmentScreenSpec spec = EquipmentScreenSpec.defaults();
+        spec.slots.put("example:shoulder", "left_shoulder");
+        spec.validate();
+        assertEquals("left_shoulder", spec.anchorFor("example:shoulder"));
     }
 
     @Test
@@ -34,15 +42,13 @@ class EquipmentScreenSpecTest {
     void migratesDeprecatedAnchorAndUiBuilderDocumentsToBindingDefaults() {
         var uiBuilder = JsonParser.parseString("{\"width\":400,\"widgets\":[]}").getAsJsonObject();
         var movableAnchors = JsonParser.parseString("{\"head\":{\"anchor\":\"head\",\"offset\":{\"x\":1,\"y\":2}}}").getAsJsonObject();
-        assertEquals(EquipmentScreenSpec.CurioAnchor.NECK,
-                EquipmentLayoutLoader.decode(uiBuilder).anchorFor("necklace"));
-        assertEquals(EquipmentScreenSpec.CurioAnchor.BELT,
-                EquipmentLayoutLoader.decode(movableAnchors).anchorFor("belt"));
+        assertEquals("neck", EquipmentLayoutLoader.decode(uiBuilder).anchorFor("necklace"));
+        assertEquals("belt", EquipmentLayoutLoader.decode(movableAnchors).anchorFor("belt"));
     }
 
     @Test
     void bundledAndInCodeDefaultsUseThePublishedSlotMap() throws Exception {
-        Map<String, EquipmentScreenSpec.CurioAnchor> expected = expectedSlots();
+        Map<String, String> expected = expectedSlots();
         assertEquals(expected, EquipmentScreenSpec.defaults().slots);
 
         try (var input = EquipmentScreenSpecTest.class.getClassLoader()
@@ -55,20 +61,19 @@ class EquipmentScreenSpecTest {
         }
     }
 
-    private static Map<String, EquipmentScreenSpec.CurioAnchor> expectedSlots() {
-        Map<String, EquipmentScreenSpec.CurioAnchor> expected = new LinkedHashMap<>();
-        put(expected, EquipmentScreenSpec.CurioAnchor.HEAD, "head", "hat", "face", "mask");
-        put(expected, EquipmentScreenSpec.CurioAnchor.NECK, "neck", "necklace", "amulet");
-        put(expected, EquipmentScreenSpec.CurioAnchor.BACK, "back", "cape", "wings");
-        put(expected, EquipmentScreenSpec.CurioAnchor.BELT, "belt", "spellbook", "waist", "sheath", "body");
-        put(expected, EquipmentScreenSpec.CurioAnchor.HANDS, "hands", "hand", "ring", "bracelet");
-        put(expected, EquipmentScreenSpec.CurioAnchor.FEET, "feet", "shoes", "anklet");
-        put(expected, EquipmentScreenSpec.CurioAnchor.OTHER, "charm", "curio");
+    private static Map<String, String> expectedSlots() {
+        Map<String, String> expected = new LinkedHashMap<>();
+        put(expected, "head", "head", "hat", "face", "mask");
+        put(expected, "neck", "neck", "necklace", "amulet");
+        put(expected, "back", "back", "cape", "wings");
+        put(expected, "belt", "belt", "spellbook", "waist", "sheath", "body");
+        put(expected, "hands", "hands", "hand", "ring", "bracelet");
+        put(expected, "feet", "feet", "shoes", "anklet");
+        put(expected, "other", "charm", "curio");
         return expected;
     }
 
-    private static void put(Map<String, EquipmentScreenSpec.CurioAnchor> destination,
-                            EquipmentScreenSpec.CurioAnchor anchor, String... slotTypes) {
+    private static void put(Map<String, String> destination, String anchor, String... slotTypes) {
         for (String slotType : slotTypes) destination.put(slotType, anchor);
     }
 }
