@@ -832,8 +832,17 @@ public final class CharacterEquipmentScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (minecraft != null && (minecraft.options.keyInventory.matches(keyCode, scanCode)
-                || ClientKeyMappings.OPEN_CHARACTER.matches(keyCode, scanCode))) {
+        if (CharacterConfigManager.general().enableSeparateKeybind
+                && ClientKeyMappings.OPEN_CHARACTER.matches(keyCode, scanCode)) {
+            while (ClientKeyMappings.OPEN_CHARACTER.consumeClick()) {}
+            if (CharacterConfigManager.general().characterKeyOpensInventory) {
+                CharacterNotContainerClient.openInventoryScreen();
+            } else {
+                onClose();
+            }
+            return true;
+        }
+        if (minecraft != null && minecraft.options.keyInventory.matches(keyCode, scanCode)) {
             CharacterNotContainerClient.openInventoryScreen();
             return true;
         }

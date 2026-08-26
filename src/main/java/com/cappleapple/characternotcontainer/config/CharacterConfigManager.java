@@ -23,6 +23,7 @@ import java.util.Map;
 public final class CharacterConfigManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
     private static final Path DIRECTORY = FMLPaths.CONFIGDIR.get().resolve(CharacterNotContainer.MOD_ID);
+    private static final Path GENERAL_PATH = DIRECTORY.resolve("general.json");
     private static final Path STATS_PATH = DIRECTORY.resolve("stats.json");
     private static volatile GeneralConfig general = new GeneralConfig();
     private static volatile StatsConfig stats = StatsConfig.defaults();
@@ -48,10 +49,11 @@ public final class CharacterConfigManager {
     public static synchronized void load() {
         try {
             Files.createDirectories(DIRECTORY);
-            general = loadOrCreate(DIRECTORY.resolve("general.json"), GeneralConfig.class, new GeneralConfig());
+            general = loadOrCreate(GENERAL_PATH, GeneralConfig.class, new GeneralConfig());
             stats = loadStats();
             sanitizeGeneral();
             sanitizeStats(stats);
+            write(GENERAL_PATH, general);
             write(STATS_PATH, stats); // Migrates and removes deprecated fields.
             revision++;
         } catch (IOException | RuntimeException exception) {

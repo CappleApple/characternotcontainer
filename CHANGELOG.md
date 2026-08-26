@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1 - 2026-08-26
+
+### Added
+
+- Added `characterKeyOpensInventory` to choose whether the character-screen key opens the inventory or closes the character screen.
+
+### Changed
+
+- Changed the default character-screen key behavior to close the character screen when it is already open.
+
 ## 1.2 - 2026-08-24
 
 ### Added

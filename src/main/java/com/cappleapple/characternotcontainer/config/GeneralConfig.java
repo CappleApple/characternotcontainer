@@ -2,6 +2,7 @@ package com.cappleapple.characternotcontainer.config;
 
 public final class GeneralConfig {
     public boolean enableSeparateKeybind = true;
+    public boolean characterKeyOpensInventory = false;
     public boolean redirectCuriosInventoryButton = true;
     public boolean enableNearbyEquipmentSources = true;
     public double nearbyEquipmentSearchRadius = 8.0D;

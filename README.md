@@ -114,6 +114,7 @@ Older UI-builder and movable-anchor configurations are migrated automatically an
 ```json
 {
   "enableSeparateKeybind": true,
+  "characterKeyOpensInventory": false,
   "redirectCuriosInventoryButton": true,
   "enableNearbyEquipmentSources": true,
   "nearbyEquipmentSearchRadius": 8.0,
@@ -124,6 +125,8 @@ Older UI-builder and movable-anchor configurations are migrated automatically an
   "showEquippedItemIcons": false
 }
 ```
+
+The inventory key always returns to the inventory from the character screen. By default, pressing the character-screen key again closes the screen. Set `characterKeyOpensInventory` to `true` to make that key open the inventory instead.
 
 Set `redirectCuriosInventoryButton` to `false` to restore Curios' normal inventory button behavior.
 
