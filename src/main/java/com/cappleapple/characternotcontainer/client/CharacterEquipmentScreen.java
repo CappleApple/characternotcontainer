@@ -37,6 +37,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.ItemStack;
@@ -56,6 +57,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -89,12 +91,14 @@ public final class CharacterEquipmentScreen extends Screen {
     private List<CuriosClientIntegration.CurioSlotView> functionalCuriosSlots = List.of();
     private boolean showCosmetics;
     private int refreshTicks;
+    private int modifierSourceRefreshTicks;
     private int statsScroll;
     private int pickerScroll;
     private int pickerSearchId;
     private ScreenRect pickerAnchor;
     private List<NearbyEquipmentResponsePayload.Entry> nearbyEquipment = List.of();
     private Map<ModifierKey, List<ModifierSourcesResponsePayload.Source>> modifierSourceHints = Map.of();
+    private Optional<ModifierSourcesResponsePayload.ArmorDamageScalingValues> armorDamageScaling = Optional.empty();
     private HoverTooltip hoverTooltip;
     private PickerTarget hoveredEquipmentTarget;
     private TextureTarget playerCompositeTarget;
@@ -113,9 +117,7 @@ public final class CharacterEquipmentScreen extends Screen {
         layoutX = (width - scaled(SCREEN_WIDTH)) / 2;
         layoutY = (height - scaled(SCREEN_HEIGHT)) / 2;
         refreshCurios();
-        if (serverSupports(ModifierSourcesRequestPayload.TYPE.id())) {
-            PacketDistributor.sendToServer(ModifierSourcesRequestPayload.INSTANCE);
-        }
+        requestModifierSources();
     }
 
     @Override
@@ -127,6 +129,16 @@ public final class CharacterEquipmentScreen extends Screen {
         if (++refreshTicks >= 10) {
             refreshTicks = 0;
             refreshCurios();
+        }
+        if (++modifierSourceRefreshTicks >= 20) {
+            modifierSourceRefreshTicks = 0;
+            requestModifierSources();
+        }
+    }
+
+    private void requestModifierSources() {
+        if (serverSupports(ModifierSourcesRequestPayload.TYPE.id())) {
+            PacketDistributor.sendToServer(ModifierSourcesRequestPayload.INSTANCE);
         }
     }
 
@@ -247,6 +259,7 @@ public final class CharacterEquipmentScreen extends Screen {
         Map<ModifierKey, List<ModifierSourcesResponsePayload.Source>> hints = new HashMap<>();
         response.entries().forEach(entry -> hints.put(new ModifierKey(entry.attributeId(), entry.modifierId()), entry.sources()));
         modifierSourceHints = Map.copyOf(hints);
+        armorDamageScaling = response.armorDamageScaling();
     }
 
     private void renderVanillaEquipment(GuiGraphics graphics, int mouseX, int mouseY) {
@@ -538,6 +551,14 @@ public final class CharacterEquipmentScreen extends Screen {
                 Component.literal(displayName(stat)).withStyle(ChatFormatting.GOLD)));
         AttributeInstance instance = player.getAttribute(stat.attribute());
         if (instance == null) return lines;
+        armorDamageScaling.ifPresent(values -> {
+            if (stat.attribute().equals(Attributes.ARMOR)) {
+                lines.add(resistanceLine("gui.characternotcontainer.damage_resistance", values.damageResistance()));
+            } else if (stat.attribute().equals(Attributes.ARMOR_TOUGHNESS)) {
+                lines.add(resistanceLine(
+                        "gui.characternotcontainer.heavy_hit_resistance", values.heavyHitResistance()));
+            }
+        });
         Set<ResourceLocation> explained = new HashSet<>();
         for (Contribution contribution : equipmentContributions(stat)) {
             AttributeModifier active = changed.modifiers.get(contribution.modifier.id());
@@ -561,6 +582,7 @@ public final class CharacterEquipmentScreen extends Screen {
 
         ResourceLocation attributeId = BuiltInRegistries.ATTRIBUTE.getKey(stat.attribute().value());
         if (attributeId != null) {
+            Map<String, GroupedModifierSource> groupedSources = new LinkedHashMap<>();
             for (AttributeModifier modifier : changed.modifiers.values()) {
                 if (explained.contains(modifier.id())) continue;
                 List<ModifierSourcesResponsePayload.Source> hints = modifierSourceHints.getOrDefault(
@@ -569,11 +591,25 @@ public final class CharacterEquipmentScreen extends Screen {
                 for (ModifierSourcesResponsePayload.Source source : hints) {
                     Component name = sourceName(source);
                     if (name != null) {
-                        addSource(lines, source.stack(), sourceWithAmount(name, modifier, stat.definition(), instance));
+                        if (source.aggregationKey().isBlank()) {
+                            addSource(lines, source.stack(), sourceWithAmount(
+                                    name, modifier, stat.definition(), instance));
+                        } else {
+                            groupedSources.computeIfAbsent(source.aggregationKey(),
+                                            ignored -> new GroupedModifierSource(source))
+                                    .add(modifier);
+                        }
                         identified = true;
                     }
                 }
                 if (identified) explained.add(modifier.id());
+            }
+            for (GroupedModifierSource group : groupedSources.values()) {
+                Component name = sourceName(group.source);
+                if (name != null) {
+                    addSource(lines, group.source.stack(), name.copy().append(Component.literal("  "))
+                            .append(groupedModifierAmount(group.modifiers, stat.definition(), instance)));
+                }
             }
         }
         addUnknownRemainder(lines, changed, explained, instance);
@@ -613,6 +649,30 @@ public final class CharacterEquipmentScreen extends Screen {
         return value.copy().withStyle(displayedAmount < 0.0D ? ChatFormatting.RED : ChatFormatting.GREEN);
     }
 
+    static Component groupedModifierAmount(List<AttributeModifier> modifiers, StatDefinition definition,
+                                           AttributeInstance instance) {
+        if (modifiers.isEmpty()) return Component.empty();
+        AttributeModifier.Operation operation = modifiers.getFirst().operation();
+        boolean sameOperation = modifiers.stream().allMatch(modifier -> modifier.operation() == operation);
+        double displayedAmount;
+        Component value;
+        if (sameOperation && operation == AttributeModifier.Operation.ADD_MULTIPLIED_BASE) {
+            displayedAmount = modifiers.stream().mapToDouble(AttributeModifier::amount).sum();
+            value = percentageModifierAmount(operation, displayedAmount);
+        } else if (sameOperation && operation == AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL) {
+            displayedAmount = modifiers.stream()
+                    .mapToDouble(modifier -> 1.0D + modifier.amount())
+                    .reduce(1.0D, (left, right) -> left * right) - 1.0D;
+            value = percentageModifierAmount(operation, displayedAmount);
+        } else {
+            displayedAmount = AttributeValueCalculator.calculate(instance, modifiers)
+                    - AttributeValueCalculator.calculate(instance, List.of());
+            value = Component.literal(signed(
+                    definition.effectiveFormat().format(displayedAmount, definition), displayedAmount));
+        }
+        return value.copy().withStyle(displayedAmount < 0.0D ? ChatFormatting.RED : ChatFormatting.GREEN);
+    }
+
     private static void addUnknownRemainder(List<SourceTooltipLine> lines, ChangedStat changed,
                                             Set<ResourceLocation> explained, AttributeInstance instance) {
         List<AttributeModifier> unknown = changed.modifiers.values().stream()
@@ -642,11 +702,21 @@ public final class CharacterEquipmentScreen extends Screen {
     }
 
     private static String signedPercent(double value) {
-        String formatted = BigDecimal.valueOf(value * 100.0D)
+        String formatted = resistancePercentage(value);
+        return value > 0.0D ? "+" + formatted : formatted;
+    }
+
+    static String resistancePercentage(double value) {
+        return BigDecimal.valueOf(value * 100.0D)
                 .setScale(2, RoundingMode.HALF_UP)
                 .stripTrailingZeros()
                 .toPlainString() + "%";
-        return value > 0.0D ? "+" + formatted : formatted;
+    }
+
+    private static SourceTooltipLine resistanceLine(String translationKey, double resistance) {
+        Component amount = Component.literal(resistancePercentage(resistance))
+                .withStyle(resistance < 0.0D ? ChatFormatting.RED : ChatFormatting.GREEN);
+        return new SourceTooltipLine(ItemStack.EMPTY, Component.translatable(translationKey, amount));
     }
 
     static Component percentageModifierAmount(AttributeModifier.Operation operation, double value) {
@@ -1081,6 +1151,21 @@ public final class CharacterEquipmentScreen extends Screen {
     private record Contribution(ItemStack stack, AttributeModifier modifier) {}
     private record SourceTooltipLine(ItemStack stack, Component text) {}
     private record ModifierKey(ResourceLocation attributeId, ResourceLocation modifierId) {}
+
+    private static final class GroupedModifierSource {
+        private final ModifierSourcesResponsePayload.Source source;
+        private final List<AttributeModifier> modifiers = new ArrayList<>();
+
+        private GroupedModifierSource(ModifierSourcesResponsePayload.Source source) {
+            this.source = source;
+        }
+
+        private void add(AttributeModifier modifier) {
+            if (modifiers.stream().noneMatch(existing -> existing.id().equals(modifier.id()))) {
+                modifiers.add(modifier);
+            }
+        }
+    }
 
     private record HoverTooltip(ItemStack item, List<Component> components, List<SourceTooltipLine> sources) {
         static HoverTooltip item(ItemStack stack) { return new HoverTooltip(stack, List.of(), List.of()); }

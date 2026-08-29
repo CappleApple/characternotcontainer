@@ -5,7 +5,8 @@ Character Not Container is a NeoForge 1.21.1 character and equipment screen. It 
 ## Features
 
 * Shows the current effective value of each player attribute that differs from that player's base value.
-* Explains changed attributes with exact additive or percentage amounts from armor, held items, Curios, active effects, and direct Needs, Not Necessities sources.
+* Explains changed attributes with exact additive or percentage amounts from armor, held items, Curios, active effects, Pufferfish Skills rewards, and direct Needs, Not Necessities sources.
+* With Armor Damage Scaling 3.5 or newer, the armor source tooltip shows current Damage Resistance and armor toughness shows Heavy Hit Resistance.
 * Active meals use the food's item icon and name. Modifiers that cannot be identified are combined into a single `???` remainder rather than attributed incorrectly.
 * Renders the real local player with their skin, armor, animation, render layers, and mouse-driven head/body tracking.
 * Uses broad head, chest, legs, and feet regions on the player model as equipment controls instead of displaying a traditional armor grid.
@@ -208,7 +209,9 @@ after editing `general.json` or `stats.json`.
 
 Attribute changes are measured against the player's current attribute-instance base value. If another mod replaces that base value directly, the replacement becomes the new baseline.
 
-Sources are identified from supported equipment, active effects, and direct integrations. Any remaining unattributed difference is shown as a combined `???` row with its net effect.
+Sources are identified from supported equipment, active effects, and direct integrations. Pufferfish Skills attribute rewards use their loaded skill-definition titles. Active tiers with the same title followed by a Roman numeral or number are collapsed into the highest active title with their exact combined bonus. Any remaining unattributed difference is shown as a combined `???` row with its net effect.
+
+When Armor Damage Scaling 3.5 or newer is installed on the server, armor and armor-toughness source tooltips use its live configured formulas. Both resistance values use an ordinary physical hit equal to the player's maximum health as their reference. Damage Resistance includes armor and every equipped protection enchantment that applies to that damage type. Heavy Hit Resistance includes the full armor, toughness, and applicable protection pipeline. Configured modded protection enchantments and custom enchantment weights are included through Armor Damage Scaling's own combat calculation.
 
 ## Optional GUI Sprites
 
@@ -315,4 +318,10 @@ For local Needs, Not Necessities integration testing, pass:
 
 ```text
 -PneedsNotNecessitiesRuntimeJar=<absolute-path-to-jar>
+```
+
+Armor Damage Scaling can be supplied for local integration testing with:
+
+```text
+-ParmorDamageScalingRuntimeJar=<absolute-path-to-jar> -PcupboardRuntimeJar=<absolute-path-to-jar>
 ```

@@ -40,6 +40,10 @@ neoForge {
     }
 
     runs {
+        configureEach {
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            logLevel = org.slf4j.event.Level.INFO
+        }
         client {
             client()
         }
@@ -49,10 +53,7 @@ neoForge {
         }
         gameTestServer {
             type = 'gameTestServer'
-        }
-        configureEach {
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
-            logLevel = org.slf4j.event.Level.INFO
+            systemProperty 'neoforge.enabledGameTestNamespaces', "${project.mod_id},minecraft"
         }
     }
 
@@ -93,6 +94,17 @@ dependencies {
         // Optional local development hook for exercising the direct integration.
         localRuntime files(project.property('needsNotNecessitiesRuntimeJar'))
     }
+    if (project.hasProperty('pufferfishSkillsRuntimeJar')) {
+        // Optional local development hook for exercising the direct integration.
+        localRuntime files(project.property('pufferfishSkillsRuntimeJar'))
+    }
+    if (project.hasProperty('armorDamageScalingRuntimeJar')) {
+        // Optional local development hooks for exercising Armor Damage Scaling and Cupboard.
+        localRuntime files(project.property('armorDamageScalingRuntimeJar'))
+    }
+    if (project.hasProperty('cupboardRuntimeJar')) {
+        localRuntime files(project.property('cupboardRuntimeJar'))
+    }
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -112,7 +124,9 @@ def generateModMetadata = tasks.register('generateModMetadata', ProcessResources
         mod_name: mod_name,
         mod_license: mod_license,
         mod_version: mod_version,
-        curios_version_range: curios_version_range
+        curios_version_range: curios_version_range,
+        puffish_skills_version_range: puffish_skills_version_range,
+        armor_damage_scaling_version_range: armor_damage_scaling_version_range
     ]
     inputs.properties replaceProperties
     expand replaceProperties
@@ -125,6 +139,10 @@ neoForge.ideSyncTask generateModMetadata
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+tasks.named('jar', Jar).configure {
+    exclude 'com/cappleapple/characternotcontainer/compat/armordamagescaling/ArmorDamageScalingGameTests.class'
 }
 
 def releaseJar = tasks.named('jar', Jar).flatMap { it.archiveFile }

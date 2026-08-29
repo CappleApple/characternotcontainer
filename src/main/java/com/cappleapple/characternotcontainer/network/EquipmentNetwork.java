@@ -1,7 +1,9 @@
 package com.cappleapple.characternotcontainer.network;
 
 import com.cappleapple.characternotcontainer.CharacterNotContainer;
+import com.cappleapple.characternotcontainer.compat.armordamagescaling.ArmorDamageScalingBridge;
 import com.cappleapple.characternotcontainer.compat.needsnotnecessities.NeedsNotNecessitiesSourceBridge;
+import com.cappleapple.characternotcontainer.compat.puffishskills.PufferfishSkillsSourceBridge;
 import com.cappleapple.characternotcontainer.equipment.EquipmentTargetAccess;
 import com.cappleapple.characternotcontainer.equipment.EquipmentTransactions;
 import com.cappleapple.characternotcontainer.equipment.NearbyEquipmentSources;
@@ -17,13 +19,14 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.items.IItemHandler;
 
+import java.util.ArrayList;
 import java.util.Optional;
 
 public final class EquipmentNetwork {
     private EquipmentNetwork() {}
 
     public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("5").optional();
+        var registrar = event.registrar("6").optional();
         registrar.playToServer(EquipmentChangePayload.TYPE, EquipmentChangePayload.STREAM_CODEC, EquipmentNetwork::handleChange);
         registrar.playToServer(NearbyEquipmentRequestPayload.TYPE, NearbyEquipmentRequestPayload.STREAM_CODEC,
                 EquipmentNetwork::handleNearbyRequest);
@@ -91,8 +94,10 @@ public final class EquipmentNetwork {
     private static void handleModifierSourcesRequest(ModifierSourcesRequestPayload request, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player)) return;
-            PacketDistributor.sendToPlayer(player,
-                    new ModifierSourcesResponsePayload(NeedsNotNecessitiesSourceBridge.sources(player)));
+            var entries = new ArrayList<>(NeedsNotNecessitiesSourceBridge.sources(player));
+            entries.addAll(PufferfishSkillsSourceBridge.sources(player));
+            PacketDistributor.sendToPlayer(player, new ModifierSourcesResponsePayload(
+                    entries, ArmorDamageScalingBridge.values(player)));
         });
     }
 

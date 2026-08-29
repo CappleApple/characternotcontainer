@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3 - 2026-08-29
+
+### Added
+
+- Added Armor Damage Scaling 3.5+ resistance details to the armor and armor-toughness attribute source tooltips using its live formulas and configured protection enchantments.
+
+### Changed
+
+- Collapsed active numbered Pufferfish Skills tiers into the highest active title with their combined attribute bonus.
+
+## 1.2.2 - 2026-08-29
+
+### Added
+
+- Added direct Pufferfish Skills attribute-source support using loaded skill titles and active reward modifier IDs.
+
 ## 1.2.1 - 2026-08-26
 
 ### Added
