@@ -70,6 +70,8 @@ public final class CharacterEquipmentScreen extends Screen {
     private static final int CURIO_SLOT_BORDER = 0xCC6D737A;
     private static final int COSMETIC_CURIO_SLOT_BACKGROUND = 0xD04B2D63;
     private static final int COSMETIC_CURIO_SLOT_BORDER = 0xD09D70B5;
+    private static final ResourceLocation CURIOS_INVENTORY_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath("curios", "textures/gui/curios/inventory.png");
     private static final CuriosClientIntegration CURIOS = loadCurios();
     private static final int SCREEN_WIDTH = 400;
     private static final int SCREEN_HEIGHT = 320;
@@ -161,7 +163,12 @@ public final class CharacterEquipmentScreen extends Screen {
             renderChangedAttributes(graphics, mouseX, mouseY);
             renderVanillaEquipment(graphics, mouseX, mouseY);
             renderCurios(graphics, placedCurios, mouseX, mouseY);
+        });
+        // GUI item rendering adds 150 Z internally. Keep controls above both
+        // slot backgrounds and item icons, but below the picker at 400.
+        renderGroup(graphics, 375.0F, () -> {
             renderCosmeticsToggle(graphics, mouseX, mouseY);
+            if (showCosmetics) renderCurioVisibilityButtons(graphics, placedCurios, mouseX, mouseY);
         });
         if (picker != null) {
             renderGroup(graphics, 400.0F, () -> renderPicker(graphics, mouseX, mouseY));
@@ -346,6 +353,34 @@ public final class CharacterEquipmentScreen extends Screen {
         }
     }
 
+    private void renderCurioVisibilityButtons(GuiGraphics graphics, List<PlacedCurio> placements,
+                                              int mouseX, int mouseY) {
+        for (PlacedCurio placement : placements) {
+            if (!placement.slot.canToggleRendering()) continue;
+            ScreenRect bounds = curioVisibilityButtonBounds(placement.bounds);
+            boolean hovered = picker == null && bounds.contains(mouseX, mouseY);
+            ResourceLocation normalSprite = placement.slot.rendering()
+                    ? CharacterGuiSprites.CURIO_RENDER_VISIBLE_BUTTON
+                    : CharacterGuiSprites.CURIO_RENDER_HIDDEN_BUTTON;
+            ResourceLocation hoveredSprite = placement.slot.rendering()
+                    ? CharacterGuiSprites.CURIO_RENDER_VISIBLE_BUTTON_HOVERED
+                    : CharacterGuiSprites.CURIO_RENDER_HIDDEN_BUTTON_HOVERED;
+            boolean custom = hovered && blitOptionalSprite(graphics, hoveredSprite, bounds);
+            if (!custom) custom = blitOptionalSprite(graphics, normalSprite, bounds);
+            if (!custom) {
+                graphics.blit(CURIOS_INVENTORY_TEXTURE, bounds.x(), bounds.y(),
+                        placement.slot.rendering() ? 75.0F : 83.0F, 0.0F,
+                        bounds.width(), bounds.height(), 256, 256);
+            } else if (hovered && !hasGuiSprite(hoveredSprite)) {
+                outline(graphics, bounds, 0xFFFFFFFF);
+            }
+            if (hovered) {
+                hoverTooltip = HoverTooltip.components(List.of(Component.translatable(placement.slot.rendering()
+                        ? "gui.characternotcontainer.hide_curio" : "gui.characternotcontainer.show_curio")));
+            }
+        }
+    }
+
     private void renderCosmeticsToggle(GuiGraphics graphics, int mouseX, int mouseY) {
         if (CURIOS == null) return;
         ScreenRect bounds = cosmeticsToggleBounds();
@@ -399,6 +434,12 @@ public final class CharacterEquipmentScreen extends Screen {
     }
 
     private PickerTarget hoveredEquipmentTarget(double mouseX, double mouseY, List<PlacedCurio> placements) {
+        if (showCosmetics) {
+            for (PlacedCurio placement : placements) {
+                if (placement.slot.canToggleRendering()
+                        && curioVisibilityButtonBounds(placement.bounds).contains(mouseX, mouseY)) return null;
+            }
+        }
         PickerTarget target = null;
         for (EquipmentSlot slot : bodySlots()) {
             if (bodyBounds(slot).contains(mouseX, mouseY)) target = new VanillaTarget(slot);
@@ -407,6 +448,10 @@ public final class CharacterEquipmentScreen extends Screen {
             if (placement.bounds.contains(mouseX, mouseY)) target = new CurioTarget(placement.slot);
         }
         return target;
+    }
+
+    static ScreenRect curioVisibilityButtonBounds(ScreenRect slotBounds) {
+        return new ScreenRect(slotBounds.x() + 12, slotBounds.y() - 1, 8, 8);
     }
 
     private void renderChangedAttributes(GuiGraphics graphics, int mouseX, int mouseY) {
@@ -879,9 +924,19 @@ public final class CharacterEquipmentScreen extends Screen {
             hoveredEquipmentTarget = null;
             return true;
         }
-        PickerTarget target = hoveredEquipmentTarget(mouseX, mouseY, placedCurios());
+        List<PlacedCurio> placements = placedCurios();
+        if (showCosmetics && CURIOS != null) {
+            for (PlacedCurio placement : placements) {
+                if (placement.slot.canToggleRendering()
+                        && curioVisibilityButtonBounds(placement.bounds).contains(mouseX, mouseY)) {
+                    CURIOS.toggleRendering(player, placement.slot);
+                    return true;
+                }
+            }
+        }
+        PickerTarget target = hoveredEquipmentTarget(mouseX, mouseY, placements);
         if (target != null) {
-            openPicker(target, placedCurios());
+            openPicker(target, placements);
             return true;
         }
         return super.mouseClicked(mouseX, mouseY, button);

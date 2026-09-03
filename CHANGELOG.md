@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1 - 2026-09-03
+
+### Added
+
+- Added per-slot Curios render toggles to the character screen's cosmetic equipment view.
+
 ## 1.3 - 2026-08-29
 
 ### Added

@@ -12,6 +12,7 @@ import java.util.List;
 public interface CuriosClientIntegration {
     List<CurioSlotView> slots(Player player, boolean cosmetic);
     boolean isValid(Player player, CurioSlotView slot, ItemStack stack);
+    void toggleRendering(Player player, CurioSlotView slot);
     List<EquipmentContribution> contributions(Player player, Holder<Attribute> attribute);
 
     static CuriosClientIntegration load() {
@@ -24,6 +25,7 @@ public interface CuriosClientIntegration {
         }
     }
 
-    record CurioSlotView(String type, int index, ResourceLocation icon, ItemStack stack, boolean cosmetic) {}
+    record CurioSlotView(String type, int index, ResourceLocation icon, ItemStack stack, boolean cosmetic,
+                         boolean rendering, boolean canToggleRendering) {}
     record EquipmentContribution(ItemStack stack, AttributeModifier modifier) {}
 }

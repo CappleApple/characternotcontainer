@@ -32,6 +32,10 @@ public final class CharacterGuiSprites {
     public static final ResourceLocation SHOW_COSMETICS_BUTTON_HOVERED = sprite("equipment/show_cosmetics_button_hovered");
     public static final ResourceLocation SHOW_EQUIPMENT_BUTTON = sprite("equipment/show_equipment_button");
     public static final ResourceLocation SHOW_EQUIPMENT_BUTTON_HOVERED = sprite("equipment/show_equipment_button_hovered");
+    public static final ResourceLocation CURIO_RENDER_VISIBLE_BUTTON = sprite("equipment/curio_render_visible_button");
+    public static final ResourceLocation CURIO_RENDER_VISIBLE_BUTTON_HOVERED = sprite("equipment/curio_render_visible_button_hovered");
+    public static final ResourceLocation CURIO_RENDER_HIDDEN_BUTTON = sprite("equipment/curio_render_hidden_button");
+    public static final ResourceLocation CURIO_RENDER_HIDDEN_BUTTON_HOVERED = sprite("equipment/curio_render_hidden_button_hovered");
 
     public static final ResourceLocation PICKER_BACKGROUND = sprite("picker/background");
     public static final ResourceLocation PICKER_CELL = sprite("picker/cell");

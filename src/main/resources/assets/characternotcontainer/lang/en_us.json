@@ -8,6 +8,8 @@
   "gui.characternotcontainer.equipment": "Equipment",
   "gui.characternotcontainer.show_cosmetics": "Show cosmetic Curios slots",
   "gui.characternotcontainer.show_equipment": "Show functional Curios slots",
+  "gui.characternotcontainer.hide_curio": "Hide this Curios slot on the character",
+  "gui.characternotcontainer.show_curio": "Show this Curios slot on the character",
   "gui.characternotcontainer.cosmetic_slot": "Cosmetic %s",
   "gui.characternotcontainer.unknown_source": "???",
   "gui.characternotcontainer.stacking": "%s stacking",

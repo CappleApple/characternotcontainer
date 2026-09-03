@@ -15,6 +15,7 @@ Character Not Container is a NeoForge 1.21.1 character and equipment screen. It 
 * Supports dynamic Curios slots, including multiple slots of the same type and mod-added slot types.
 * Uses Curios' native slot icons and validation.
 * Supports switching between functional and cosmetic Curios equipment directly from the character screen.
+* Provides Curios-native per-slot character render toggles while viewing cosmetic Curios slots.
 * Opens the character screen from the player inventory with the same key without intercepting focused search boxes.
 * Curios is fully optional.
 
@@ -263,6 +264,8 @@ Supported sprite IDs:
 | `equipment/cosmetic_curio_slot`, `equipment/cosmetic_curio_slot_hovered`, `equipment/cosmetic_curio_slot_selected` | Cosmetic Curios slot and state overlays, 18 x 18                                                         |
 | `equipment/show_cosmetics_button`, `equipment/show_cosmetics_button_hovered`                                       | Complete 18 x 18 button shown in functional mode                                                         |
 | `equipment/show_equipment_button`, `equipment/show_equipment_button_hovered`                                       | Complete 18 x 18 button shown in cosmetic mode                                                           |
+| `equipment/curio_render_visible_button`, `equipment/curio_render_visible_button_hovered`                           | 8 x 8 per-slot render button for a visible Curio, shown in cosmetic mode                                 |
+| `equipment/curio_render_hidden_button`, `equipment/curio_render_hidden_button_hovered`                             | 8 x 8 per-slot render button for a hidden Curio, shown in cosmetic mode                                  |
 | `picker/background`                                                                                                | Dynamic picker panel: columns x 20 + 10 pixels, plus 5 pixels when scrolling; rows x 20 + 10 pixels high |
 | `picker/cell`, `picker/cell_hovered`                                                                               | Picker cell and hover overlay, 18 x 18                                                                   |
 | `picker/unequip`                                                                                                   | 16 x 16 replacement for the default red `x`                                                              |
