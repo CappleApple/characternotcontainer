@@ -8,9 +8,9 @@ import com.cappleapple.characternotcontainer.equipment.EquipmentTargetAccess;
 import com.cappleapple.characternotcontainer.equipment.EquipmentTransactions;
 import com.cappleapple.characternotcontainer.equipment.NearbyEquipmentSources;
 import com.cappleapple.characternotcontainer.equipment.PlayerInventoryAccess;
+import com.cappleapple.characternotcontainer.equipment.VanillaEquipmentTarget;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -107,42 +107,9 @@ public final class EquipmentNetwork {
 
     private static Optional<EquipmentTargetAccess> resolveTarget(ServerPlayer player, EquipmentChangePayload payload) {
         return switch (payload.system()) {
-            case VANILLA -> resolveVanilla(player, payload);
+            case VANILLA -> VanillaEquipmentTarget.resolve(player, payload);
             case CURIOS -> ModList.get().isLoaded("curios") ? CuriosServerAccess.resolve(player, payload) : Optional.empty();
         };
-    }
-
-    private static Optional<EquipmentTargetAccess> resolveVanilla(ServerPlayer player, EquipmentChangePayload payload) {
-        if (payload.cosmetic()) return Optional.empty();
-        EquipmentSlot slot = switch (payload.slotId()) {
-            case "head" -> EquipmentSlot.HEAD;
-            case "chest" -> EquipmentSlot.CHEST;
-            case "legs" -> EquipmentSlot.LEGS;
-            case "feet" -> EquipmentSlot.FEET;
-            default -> null;
-        };
-        if (slot == null) return Optional.empty();
-        return Optional.of(new EquipmentTargetAccess() {
-            @Override
-            public ItemStack equipped() {
-                return player.getItemBySlot(slot).copy();
-            }
-
-            @Override
-            public boolean accepts(ItemStack stack) {
-                return !stack.isEmpty() && player.getEquipmentSlotForItem(stack) == slot && stack.canEquip(slot, player);
-            }
-
-            @Override
-            public boolean canRemove() {
-                return true;
-            }
-
-            @Override
-            public void set(ItemStack stack) {
-                player.setItemSlot(slot, stack.copy());
-            }
-        });
     }
 
     private static final class CuriosServerAccess {

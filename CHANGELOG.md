@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.3 - 2026-09-08
+
+### Added
+
+- Added nearby equipment-source support for vanilla head, chest, legs, and feet armor from containers and armor stands.
+
 ## 1.3.2 - 2026-09-07
 
 ### Fixed

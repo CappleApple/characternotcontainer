@@ -143,6 +143,7 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.named('jar', Jar).configure {
     exclude 'com/cappleapple/characternotcontainer/compat/armordamagescaling/ArmorDamageScalingGameTests.class'
+    exclude 'com/cappleapple/characternotcontainer/equipment/NearbyArmorSourceGameTests*.class'
 }
 
 def releaseJar = tasks.named('jar', Jar).flatMap { it.archiveFile }
