@@ -15,6 +15,7 @@ Character Not Container is a NeoForge 1.21.1 character and equipment screen. It 
 * Supports dynamic Curios slots, including multiple slots of the same type and mod-added slot types.
 * Uses Curios' native slot icons and validation.
 * Supports switching between functional and cosmetic Curios equipment directly from the character screen.
+* Keeps every visible Curios slot available in cosmetic mode, using the functional slot when a type has no separate cosmetic storage.
 * Provides Curios-native per-slot character render toggles while viewing cosmetic Curios slots.
 * Opens the character screen from the player inventory with the same key without intercepting focused search boxes.
 * Curios is fully optional.

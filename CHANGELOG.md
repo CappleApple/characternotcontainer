@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.2 - 2026-09-07
+
+### Fixed
+
+- Fixed cosmetic mode omitting Curios slot types that do not provide separate cosmetic storage.
+
 ## 1.3.1 - 2026-09-03
 
 ### Added

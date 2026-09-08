@@ -15,6 +15,10 @@ public interface CuriosClientIntegration {
     void toggleRendering(Player player, CurioSlotView slot);
     List<EquipmentContribution> contributions(Player player, Holder<Attribute> attribute);
 
+    static boolean useCosmeticStorage(boolean cosmeticView, boolean hasCosmeticStorage) {
+        return cosmeticView && hasCosmeticStorage;
+    }
+
     static CuriosClientIntegration load() {
         try {
             return (CuriosClientIntegration) Class.forName(

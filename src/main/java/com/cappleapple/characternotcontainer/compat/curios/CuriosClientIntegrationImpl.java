@@ -20,8 +20,9 @@ public final class CuriosClientIntegrationImpl implements CuriosClientIntegratio
     public List<CurioSlotView> slots(Player player, boolean cosmetic) {
         List<CurioSlotView> result = new ArrayList<>();
         CuriosApi.getCuriosInventory(player).ifPresent(inventory -> inventory.getCurios().forEach((type, handler) -> {
-            if (!handler.isVisible() || cosmetic && !handler.hasCosmetic()) return;
-            var stacks = cosmetic ? handler.getCosmeticStacks() : handler.getStacks();
+            if (!handler.isVisible()) return;
+            boolean useCosmeticStorage = CuriosClientIntegration.useCosmeticStorage(cosmetic, handler.hasCosmetic());
+            var stacks = useCosmeticStorage ? handler.getCosmeticStacks() : handler.getStacks();
             var renderStates = handler.getRenders();
             boolean canToggleRendering = handler.canToggleRendering();
             for (int index = 0; index < handler.getSlots(); index++) {
@@ -29,7 +30,7 @@ public final class CuriosClientIntegrationImpl implements CuriosClientIntegratio
                     boolean rendering = !canToggleRendering
                             || renderStates.size() > index && renderStates.get(index);
                     result.add(new CurioSlotView(type, index, CuriosApi.getSlotIcon(type),
-                            stacks.getStackInSlot(index).copy(), cosmetic, rendering, canToggleRendering));
+                            stacks.getStackInSlot(index).copy(), useCosmeticStorage, rendering, canToggleRendering));
                 }
             }
         }));
