@@ -1,5 +1,7 @@
 package com.cappleapple.characternotcontainer.client;
 
+import com.cappleapple.characternotcontainer.network.RelicResearchPayload;
+import com.cappleapple.characternotcontainer.compat.relics.RelicsIntegration;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.blaze3d.pipeline.RenderTarget;
@@ -101,7 +103,10 @@ public final class CharacterEquipmentScreen extends Screen {
     private List<NearbyEquipmentResponsePayload.Entry> nearbyEquipment = List.of();
     private Map<ModifierKey, List<ModifierSourcesResponsePayload.Source>> modifierSourceHints = Map.of();
     private Optional<ModifierSourcesResponsePayload.ArmorDamageScalingValues> armorDamageScaling = Optional.empty();
+    private final ResearchHold<EquipmentChangePayload> researchHold = new ResearchHold<>();
+    private ItemStack researchStack = ItemStack.EMPTY;
     private HoverTooltip hoverTooltip;
+    private RelicsTooltipContext relicsTooltipContext;
     private PickerTarget hoveredEquipmentTarget;
     private TextureTarget playerCompositeTarget;
 
@@ -112,6 +117,9 @@ public final class CharacterEquipmentScreen extends Screen {
 
     @Override
     protected void init() {
+        researchHold.tick(null, false);
+        researchStack = ItemStack.EMPTY;
+        relicsTooltipContext = null;
         spec = EquipmentLayoutLoader.load();
         slotLayout = SlotLayoutLoader.load();
         layoutScale = Math.min(1.0D, Math.min((width - 12.0D) / SCREEN_WIDTH, (height - 12.0D) / SCREEN_HEIGHT));
@@ -128,6 +136,7 @@ public final class CharacterEquipmentScreen extends Screen {
             onClose();
             return;
         }
+        tickRelicResearch();
         if (++refreshTicks >= 10) {
             refreshTicks = 0;
             refreshCurios();
@@ -136,6 +145,53 @@ public final class CharacterEquipmentScreen extends Screen {
             modifierSourceRefreshTicks = 0;
             requestModifierSources();
         }
+    }
+
+    private RelicResearchPayload researchTargetAtMouse() {
+        var window = minecraft.getWindow();
+        return researchTarget(minecraft.mouseHandler.xpos() * window.getGuiScaledWidth() / window.getScreenWidth(),
+                minecraft.mouseHandler.ypos() * window.getGuiScaledHeight() / window.getScreenHeight());
+    }
+
+    private void tickRelicResearch() {
+        var hovered = researchTargetAtMouse();
+        ItemStack stack = hovered == null ? ItemStack.EMPTY : hovered.expected();
+        if (!ItemStack.isSameItem(stack, researchStack) || stack.getCount() != researchStack.getCount()) researchHold.tick(null, false);
+        researchStack = stack.copy();
+        if (researchHold.tick(hovered == null ? null : hovered.target(), RelicsResearchClient.isHeld())) {
+            PacketDistributor.sendToServer(hovered);
+        }
+    }
+
+    private RelicResearchPayload researchTarget(double mouseX, double mouseY) {
+        if (!serverSupports(RelicResearchPayload.TYPE.id())) return null;
+        PickerTarget target = picker;
+        ItemStack stack;
+        EquipmentChangePayload.SourceKind kind = EquipmentChangePayload.SourceKind.UNEQUIP;
+        int index = -1;
+        if (target == null) {
+            target = hoveredEquipmentTarget(mouseX, mouseY, placedCurios());
+            if (target == null) return null;
+            stack = target.equipped();
+        } else {
+            List<InventoryCandidate> entries = candidates(target);
+            PickerGeometry geometry = pickerGeometry(entries.size() + 1);
+            int x = (int)Math.floor(mouseX - geometry.startX);
+            int y = (int)Math.floor(mouseY - geometry.bounds.y() - 6);
+            if (x < 0 || y < 0 || x / 20 >= geometry.columns || y / 20 >= geometry.visibleRows
+                    || x % 20 >= 18 || y % 20 >= 18) return null;
+            int scroll = Math.max(0, Math.min(pickerScroll, Math.max(0, geometry.totalRows - geometry.visibleRows)));
+            int selected = (y / 20 + scroll) * geometry.columns + x / 20;
+            if (selected <= 0 || selected > entries.size()) return null;
+            InventoryCandidate candidate = entries.get(selected - 1);
+            stack = candidate.stack;
+            kind = candidate.sourceKind;
+            index = candidate.sourceIndex;
+        }
+        if (!RelicsResearchClient.available(stack)) return null;
+        return new RelicResearchPayload(
+                new EquipmentChangePayload(target.system(), target.slotId(), target.slotIndex(), target.cosmetic(),
+                        kind, index, kind == EquipmentChangePayload.SourceKind.NEARBY ? pickerSearchId : 0), stack.copy());
     }
 
     private void requestModifierSources() {
@@ -173,7 +229,18 @@ public final class CharacterEquipmentScreen extends Screen {
         if (picker != null) {
             renderGroup(graphics, 400.0F, () -> renderPicker(graphics, mouseX, mouseY));
         }
-        if (hoverTooltip != null) hoverTooltip.render(graphics, mouseX, mouseY);
+        if (hoverTooltip != null) {
+            if (RelicsIntegration.isRelic(hoverTooltip.item())) {
+                if (relicsTooltipContext == null) relicsTooltipContext = new RelicsTooltipContext(player, this);
+                var target = researchTarget(mouseX, mouseY);
+                var progress = target != null && ItemStack.isSameItem(researchStack, target.expected())
+                        && researchStack.getCount() == target.expected().getCount()
+                        ? researchHold.progress(target.target()) : ResearchHold.Progress.NONE;
+                relicsTooltipContext.renderItemTooltip(graphics, hoverTooltip.item(), mouseX, mouseY, progress);
+            } else {
+                hoverTooltip.render(graphics, mouseX, mouseY);
+            }
+        }
     }
 
     private void renderPlayerGroup(GuiGraphics graphics, int mouseX, int mouseY) {
@@ -217,6 +284,7 @@ public final class CharacterEquipmentScreen extends Screen {
 
     @Override
     public void removed() {
+        RelicsResearchClient.resetInput();
         if (playerCompositeTarget != null) {
             playerCompositeTarget.destroyBuffers();
             playerCompositeTarget = null;
@@ -299,10 +367,9 @@ public final class CharacterEquipmentScreen extends Screen {
                 graphics.renderItem(equipped, iconX, iconY);
             }
             if (hovered) {
-                List<Component> lines = new ArrayList<>();
-                lines.add(slotName(slot).copy().withStyle(ChatFormatting.GOLD));
-                if (!equipped.isEmpty()) lines.add(equipped.getHoverName());
-                hoverTooltip = HoverTooltip.components(lines);
+                hoverTooltip = equipped.isEmpty()
+                        ? HoverTooltip.components(List.of(slotName(slot).copy().withStyle(ChatFormatting.GOLD)))
+                        : HoverTooltip.item(equipped);
             }
         }
     }
@@ -344,11 +411,12 @@ public final class CharacterEquipmentScreen extends Screen {
                 graphics.renderItem(placement.slot.stack(), placement.bounds.x() + 1, placement.bounds.y() + 1);
             }
             if (hovered) {
-                Component name = Component.translatableWithFallback("curios.identifier." + placement.slot.type(), titleCase(placement.slot.type()));
-                List<Component> lines = new ArrayList<>();
-                lines.add(name.copy().withStyle(ChatFormatting.GOLD));
-                if (!placement.slot.stack().isEmpty()) lines.add(placement.slot.stack().getHoverName());
-                hoverTooltip = HoverTooltip.components(lines);
+                if (placement.slot.stack().isEmpty()) {
+                    Component name = Component.translatableWithFallback("curios.identifier." + placement.slot.type(), titleCase(placement.slot.type()));
+                    hoverTooltip = HoverTooltip.components(List.of(name.copy().withStyle(ChatFormatting.GOLD)));
+                } else {
+                    hoverTooltip = HoverTooltip.item(placement.slot.stack());
+                }
             }
         }
     }
@@ -893,6 +961,7 @@ public final class CharacterEquipmentScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (researchTarget(mouseX, mouseY) != null && RelicsResearchClient.matchesMouse(button)) return true;
         if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
         if (picker != null) {
             List<InventoryCandidate> candidates = candidates(picker);
@@ -957,6 +1026,11 @@ public final class CharacterEquipmentScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        RelicsResearchClient.keyboardEvent(scanCode, true);
+        if (researchTargetAtMouse() != null && RelicsResearchClient.matchesKey(keyCode, scanCode)) {
+            while (ClientKeyMappings.OPEN_CHARACTER.consumeClick()) {}
+            return true;
+        }
         if (CharacterConfigManager.general().enableSeparateKeybind
                 && ClientKeyMappings.OPEN_CHARACTER.matches(keyCode, scanCode)) {
             while (ClientKeyMappings.OPEN_CHARACTER.consumeClick()) {}
@@ -976,6 +1050,12 @@ public final class CharacterEquipmentScreen extends Screen {
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+        RelicsResearchClient.keyboardEvent(scanCode, false);
+        return super.keyReleased(keyCode, scanCode, modifiers);
     }
 
     private List<InventoryCandidate> candidates(PickerTarget target) {

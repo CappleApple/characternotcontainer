@@ -1,5 +1,7 @@
 package com.cappleapple.characternotcontainer.client;
 
+import com.cappleapple.characternotcontainer.compat.relics.RelicResearchMenu;
+import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import com.cappleapple.characternotcontainer.CharacterNotContainer;
 import com.cappleapple.characternotcontainer.config.CharacterConfigManager;
 import net.minecraft.client.Minecraft;
@@ -22,14 +24,18 @@ import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
 @Mod(value = CharacterNotContainer.MOD_ID, dist = Dist.CLIENT)
+
 public final class CharacterNotContainerClient {
     private static boolean discoverAttributes;
     private static int discoveryDelay;
 
     public CharacterNotContainerClient(net.neoforged.bus.api.IEventBus modBus, ModContainer container) {
         modBus.addListener(ClientKeyMappings::register);
+        modBus.addListener((RegisterMenuScreensEvent event) ->
+                event.register(RelicResearchMenu.TYPE.get(), RelicResearchScreen::new));
         modBus.addListener(CharacterNotContainerClient::registerReloadListener);
         NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::clientTick);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, RelicResearchScreen::closeMenuOnReturn);
         NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::redirectCuriosInventoryButton);
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, CharacterNotContainerClient::openCharacterFromInventory);
         NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::playerLoggedIn);

@@ -1,5 +1,6 @@
 package com.cappleapple.characternotcontainer.equipment;
 
+import com.cappleapple.characternotcontainer.compat.relics.RelicResearchSource;
 import com.cappleapple.characternotcontainer.network.EquipmentChangePayload;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -27,6 +28,12 @@ public final class VanillaEquipmentTarget {
             @Override
             public ItemStack equipped() {
                 return player.getItemBySlot(slot).copy();
+            }
+
+            @Override
+            public Optional<RelicResearchSource> researchSource() {
+                return Optional.of(new RelicResearchSource(
+                        () -> player.getItemBySlot(slot), player::isAlive, () -> player.getInventory().setChanged()));
             }
 
             @Override

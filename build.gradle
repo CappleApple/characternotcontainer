@@ -105,6 +105,15 @@ dependencies {
     if (project.hasProperty('cupboardRuntimeJar')) {
         localRuntime files(project.property('cupboardRuntimeJar'))
     }
+    if (project.hasProperty('relicsRuntimeJar')) {
+        localRuntime files(project.property('relicsRuntimeJar'))
+    }
+    if (project.hasProperty('octoLibRuntimeJar')) {
+        localRuntime files(project.property('octoLibRuntimeJar'))
+    }
+    if (project.hasProperty('architecturyRuntimeJar')) {
+        localRuntime files(project.property('architecturyRuntimeJar'))
+    }
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -144,6 +153,8 @@ tasks.withType(JavaCompile).configureEach {
 tasks.named('jar', Jar).configure {
     exclude 'com/cappleapple/characternotcontainer/compat/armordamagescaling/ArmorDamageScalingGameTests.class'
     exclude 'com/cappleapple/characternotcontainer/equipment/NearbyArmorSourceGameTests*.class'
+    exclude 'com/cappleapple/characternotcontainer/compat/relics/RelicResearchGameTests*.class'
+    exclude 'com/cappleapple/characternotcontainer/gametest/**'
 }
 
 def releaseJar = tasks.named('jar', Jar).flatMap { it.archiveFile }

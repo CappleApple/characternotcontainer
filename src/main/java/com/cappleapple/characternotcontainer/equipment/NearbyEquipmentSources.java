@@ -1,5 +1,7 @@
 package com.cappleapple.characternotcontainer.equipment;
 
+import com.cappleapple.characternotcontainer.compat.relics.RelicResearchSource;
+import java.util.Optional;
 import com.cappleapple.characternotcontainer.CharacterNotContainer;
 import com.cappleapple.characternotcontainer.config.CharacterConfigManager;
 import com.cappleapple.characternotcontainer.network.EquipmentChangePayload;
@@ -104,6 +106,25 @@ public final class NearbyEquipmentSources {
         }
         SESSIONS.remove(player.getUUID());
         return true;
+    }
+
+    public static Optional<RelicResearchSource> researchSource(
+            ServerPlayer player, EquipmentChangePayload payload) {
+        SearchSession session = SESSIONS.get(player.getUUID());
+        if (!CharacterConfigManager.general().enableNearbyEquipmentSources || session == null
+                || session.searchId != payload.searchId()
+                || !session.target.equals(TargetKey.of(payload.system(), payload.slotId(), payload.slotIndex(), payload.cosmetic()))
+                || !session.dimension.equals(player.level().dimension()) || player.level().getGameTime() > session.expiresAt
+                || payload.sourceIndex() < 0 || payload.sourceIndex() >= session.candidates.size()) return Optional.empty();
+        SourceCandidate candidate = session.candidates.get(payload.sourceIndex());
+        if (!candidate.source.inRange(player)
+                || !ItemStack.isSameItemSameComponents(candidate.source.extractOne(player, true), candidate.displayStack)) {
+            return Optional.empty();
+        }
+        var source = candidate.source.researchSource(player);
+        return Optional.of(new RelicResearchSource(
+                source.stack(), () -> CharacterConfigManager.general().enableNearbyEquipmentSources
+                        && session.dimension.equals(player.level().dimension()) && source.valid().getAsBoolean(), source.changed()));
     }
 
     public static void clear(ServerPlayer player) {
@@ -224,6 +245,8 @@ public final class NearbyEquipmentSources {
         boolean restore(ServerPlayer player, ItemStack stack);
 
         boolean inRange(ServerPlayer player);
+
+        RelicResearchSource researchSource(ServerPlayer player);
     }
 
     private interface HandlerSource extends NearbySource {
@@ -262,6 +285,16 @@ public final class NearbyEquipmentSources {
             if (handler == null || slot < 0 || slot >= handler.getSlots()
                     || !handler.insertItem(slot, stack.copy(), true).isEmpty()) return false;
             return handler.insertItem(slot, stack.copy(), false).isEmpty();
+        }
+
+        @Override
+        public RelicResearchSource researchSource(ServerPlayer player) {
+            return RelicResearchSource.handler(
+                    () -> inRange(player) ? player.serverLevel().getCapability(Capabilities.ItemHandler.BLOCK, pos, side) : null,
+                    slot, () -> inRange(player), () -> {
+                        var blockEntity = player.serverLevel().getBlockEntity(pos);
+                        if (blockEntity != null) blockEntity.setChanged();
+                    });
         }
 
         @Override
@@ -312,6 +345,16 @@ public final class NearbyEquipmentSources {
         }
 
         @Override
+        public RelicResearchSource researchSource(ServerPlayer player) {
+            return RelicResearchSource.handler(() -> {
+                Entity entity = player.serverLevel().getEntity(entityId);
+                return entity == null || !inRange(player) ? null : kind == EntityHandlerKind.NORMAL
+                        ? entity.getCapability(Capabilities.ItemHandler.ENTITY, null)
+                        : entity.getCapability(Capabilities.ItemHandler.ENTITY_AUTOMATION, side);
+            }, slot, () -> inRange(player), () -> {});
+        }
+
+        @Override
         public boolean inRange(ServerPlayer player) {
             Entity entity = player.serverLevel().getEntity(entityId);
             double radius = CharacterConfigManager.general().nearbyEquipmentSearchRadius;
@@ -350,6 +393,15 @@ public final class NearbyEquipmentSources {
             restored.grow(stack.getCount());
             stand.setItemSlot(slot, restored);
             return true;
+        }
+
+        @Override
+        public RelicResearchSource researchSource(ServerPlayer player) {
+            return new RelicResearchSource(() -> {
+                Entity entity = player.serverLevel().getEntity(entityId);
+                return entity instanceof ArmorStand stand && stand.canUseSlot(slot) && inRange(player)
+                        ? stand.getItemBySlot(slot) : ItemStack.EMPTY;
+            }, () -> inRange(player), () -> {});
         }
 
         @Override

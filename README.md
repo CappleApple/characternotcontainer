@@ -14,9 +14,11 @@ Character Not Container is a NeoForge 1.21.1 character and equipment screen. It 
 * Supports nearby armor stands and blocks or entities exposing NeoForge's generic item-handler capability when the mod is installed on the server.
 * Supports dynamic Curios slots, including multiple slots of the same type and mod-added slot types.
 * Uses Curios' native slot icons and validation.
+* Uses standard item tooltips for equipped armor, Curios, and equipment-picker items, including tooltip content and rendering supplied by other mods.
 * Supports switching between functional and cosmetic Curios equipment directly from the character screen.
 * Keeps every visible Curios slot available in cosmetic mode, using the functional slot when a type has no separate cosmetic storage.
 * Provides Curios-native per-slot character render toggles while viewing cosmetic Curios slots.
+* With Relics installed, hold its configured research key for one second over equipped relics or picker items to open its research interface. Its native tooltip supplies the research-key prompt and animated hold progress. Works with functional and cosmetic Curios and nearby sources, keeps the item in place, and returns to the character screen afterward. Requires Character Not Container 1.3.4 or newer on the server; Relics remains optional.
 * Opens the character screen from the player inventory with the same key without intercepting focused search boxes.
 * Curios is fully optional.
 

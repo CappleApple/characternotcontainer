@@ -1,5 +1,9 @@
 package com.cappleapple.characternotcontainer.network;
 
+import com.cappleapple.characternotcontainer.compat.relics.RelicResearchMenu;
+import com.cappleapple.characternotcontainer.compat.relics.RelicResearchSource;
+import com.cappleapple.characternotcontainer.compat.relics.RelicsIntegration;
+import net.minecraft.world.SimpleMenuProvider;
 import com.cappleapple.characternotcontainer.CharacterNotContainer;
 import com.cappleapple.characternotcontainer.compat.armordamagescaling.ArmorDamageScalingBridge;
 import com.cappleapple.characternotcontainer.compat.needsnotnecessities.NeedsNotNecessitiesSourceBridge;
@@ -27,6 +31,9 @@ public final class EquipmentNetwork {
 
     public static void register(RegisterPayloadHandlersEvent event) {
         var registrar = event.registrar("6").optional();
+        // A separate optional channel preserves compatibility with older CNC servers.
+        event.registrar("1").optional().playToServer(RelicResearchPayload.TYPE, RelicResearchPayload.STREAM_CODEC,
+                EquipmentNetwork::handleRelicResearch);
         registrar.playToServer(EquipmentChangePayload.TYPE, EquipmentChangePayload.STREAM_CODEC, EquipmentNetwork::handleChange);
         registrar.playToServer(NearbyEquipmentRequestPayload.TYPE, NearbyEquipmentRequestPayload.STREAM_CODEC,
                 EquipmentNetwork::handleNearbyRequest);
@@ -36,6 +43,29 @@ public final class EquipmentNetwork {
                 EquipmentNetwork::handleModifierSourcesRequest);
         registrar.playToClient(ModifierSourcesResponsePayload.TYPE, ModifierSourcesResponsePayload.STREAM_CODEC,
                 EquipmentNetwork::handleModifierSourcesResponse);
+    }
+
+    private static void handleRelicResearch(RelicResearchPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player) || player.containerMenu != player.inventoryMenu
+                    || !player.isAlive() || !RelicsIntegration.isRelic(payload.expected())) return;
+            EquipmentChangePayload target = payload.target();
+            var equipment = resolveTarget(player, target);
+            if (equipment.isEmpty()) return;
+            Optional<RelicResearchSource> source = switch (target.sourceKind()) {
+                case UNEQUIP -> equipment.get().researchSource();
+                case PLAYER_INVENTORY -> Optional.of(
+                        RelicResearchSource.handler(
+                                () -> PlayerInventoryAccess.handler(player), target.sourceIndex(), player::isAlive,
+                                () -> player.getInventory().setChanged()));
+                case NEARBY -> NearbyEquipmentSources.researchSource(player, target);
+            };
+            source.filter(value -> value.valid().getAsBoolean()
+                    && ItemStack.isSameItem(value.stack().get(), payload.expected())).ifPresent(value ->
+                    player.openMenu(new SimpleMenuProvider(
+                            (id, inventory, owner) -> new RelicResearchMenu(id, value),
+                            Component.translatable("gui.characternotcontainer.character"))));
+        });
     }
 
     public static void playerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {

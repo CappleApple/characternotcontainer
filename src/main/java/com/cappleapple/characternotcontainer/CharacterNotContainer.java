@@ -1,5 +1,6 @@
 package com.cappleapple.characternotcontainer;
 
+import com.cappleapple.characternotcontainer.compat.relics.RelicResearchMenu;
 import com.cappleapple.characternotcontainer.command.CharacterCommands;
 import com.cappleapple.characternotcontainer.compat.needsnotnecessities.NeedsNotNecessitiesSourceBridge;
 import com.cappleapple.characternotcontainer.compat.puffishskills.PufferfishSkillsSourceBridge;
@@ -14,12 +15,14 @@ import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 
 @Mod(CharacterNotContainer.MOD_ID)
+
 public final class CharacterNotContainer {
     public static final String MOD_ID = "characternotcontainer";
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public CharacterNotContainer(IEventBus modBus, ModContainer container) {
         CharacterConfigManager.load();
+        RelicResearchMenu.MENUS.register(modBus);
         modBus.addListener(EquipmentNetwork::register);
         NeoForge.EVENT_BUS.addListener(CharacterCommands::register);
         NeoForge.EVENT_BUS.addListener(EquipmentNetwork::playerLoggedOut);

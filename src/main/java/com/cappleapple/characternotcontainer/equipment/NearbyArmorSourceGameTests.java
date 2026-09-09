@@ -1,5 +1,6 @@
 package com.cappleapple.characternotcontainer.equipment;
 
+import com.cappleapple.characternotcontainer.gametest.GameTestPlayers;
 import com.cappleapple.characternotcontainer.CharacterNotContainer;
 import com.cappleapple.characternotcontainer.config.CharacterConfigManager;
 import com.cappleapple.characternotcontainer.network.EquipmentChangePayload;
@@ -26,6 +27,7 @@ import java.util.List;
 @GameTestHolder(CharacterNotContainer.MOD_ID)
 @PrefixGameTestTemplate(false)
 @SuppressWarnings("removal")
+
 public final class NearbyArmorSourceGameTests {
     private static final String EMPTY_TEMPLATE = "bastion/mobs/empty";
     private static final List<ArmorCase> ARMOR_CASES = List.of(
@@ -38,7 +40,7 @@ public final class NearbyArmorSourceGameTests {
 
     @GameTest(templateNamespace = "minecraft", template = EMPTY_TEMPLATE)
     public static void equipsVanillaArmorFromNearbyContainer(GameTestHelper helper) {
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        ServerPlayer player = GameTestPlayers.create(helper);
         BlockPos chestPos = player.blockPosition().offset(1, 0, 0);
         helper.getLevel().setBlock(chestPos, Blocks.CHEST.defaultBlockState(), Block.UPDATE_ALL);
         Container chest = (Container)helper.getLevel().getBlockEntity(chestPos);
@@ -61,7 +63,7 @@ public final class NearbyArmorSourceGameTests {
 
     @GameTest(templateNamespace = "minecraft", template = EMPTY_TEMPLATE)
     public static void equipsVanillaArmorFromNearbyArmorStand(GameTestHelper helper) {
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        ServerPlayer player = GameTestPlayers.create(helper);
         ArmorStand stand = new ArmorStand(helper.getLevel(), player.getX() + 1.0D, player.getY(), player.getZ());
         for (ArmorCase armor : ARMOR_CASES) {
             player.setItemSlot(armor.slot(), new ItemStack(armor.previous()));

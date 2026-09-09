@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.3.7 - 2026-09-09
+
+### Fixed
+
+- Fixed Relics' native research-key prompt being omitted from character-screen item tooltips.
+- Fixed Relics' native tooltip progress bar not following the research-key hold on equipped and picker items.
+
+## 1.3.6 - 2026-09-09
+
+### Changed
+
+- Changed equipped armor and Curios items to use the standard item tooltip handler, matching equipment-picker items.
+- Removed the custom research hint and progress overlay from item hovers.
+
+## 1.3.5 - 2026-09-09
+
+### Fixed
+
+- Fixed missing research-key hints on equipped relics and equipment-picker items.
+- Fixed the intermediate inventory-screen flash when opening and closing Relics research.
+
+## 1.3.4 - 2026-09-09
+
+### Added
+
+- Added hold-to-research support using the configured Relics research key on equipped items and equipment-picker items, including nearby sources.
+
 ## 1.3.3 - 2026-09-08
 
 ### Added

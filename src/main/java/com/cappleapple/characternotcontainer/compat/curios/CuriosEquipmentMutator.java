@@ -1,5 +1,6 @@
 package com.cappleapple.characternotcontainer.compat.curios;
 
+import com.cappleapple.characternotcontainer.compat.relics.RelicResearchSource;
 import com.cappleapple.characternotcontainer.equipment.EquipmentTargetAccess;
 import com.cappleapple.characternotcontainer.network.EquipmentChangePayload;
 import net.minecraft.server.level.ServerPlayer;
@@ -20,6 +21,15 @@ public final class CuriosEquipmentMutator {
                         @Override
                         public ItemStack equipped() {
                             return stacks.getStackInSlot(payload.slotIndex()).copy();
+                        }
+
+                        @Override
+                        public Optional<RelicResearchSource> researchSource() {
+                            return Optional.of(RelicResearchSource.handler(
+                                    () -> CuriosApi.getCuriosInventory(player)
+                                            .flatMap(inventory -> inventory.getStacksHandler(payload.slotId()))
+                                            .map(current -> payload.cosmetic() ? current.getCosmeticStacks() : current.getStacks())
+                                            .orElse(null), payload.slotIndex(), player::isAlive, () -> {}));
                         }
 
                         @Override
