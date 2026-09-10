@@ -298,7 +298,7 @@ Registry-ID configuration through `stats.json` remains available without requiri
 
 Targets Java 17 and Forge 47.4.10 or newer. Run the Gradle 9 wrapper with Java 21; Gradle automatically provisions the Java 17 toolchain for compilation and game launches.
 
-The installable, SRG-remapped output is `build/libs/characternotcontainer-forge-1.3.8.jar`. JARs in `build/devlibs` are development artifacts.
+The installable, SRG-remapped output is `build/libs/characternotcontainer-forge-1.0.jar`. JARs in `build/devlibs` are development artifacts.
 
 ```powershell
 .\gradlew.bat clean test build

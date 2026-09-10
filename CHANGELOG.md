@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.8 - 2026-09-09
+## 1.0 - 2026-09-09
 
 ### Added
 
@@ -9,7 +9,7 @@
 
 ### Changed
 
-- Changed this branch's release JAR name to `characternotcontainer-forge-1.3.8.jar`.
+- Changed this branch's release JAR name to `characternotcontainer-forge-1.0.jar`.
 - Changed the default reach and step attributes to their Forge 1.20.1 registry IDs.
 
 ### Fixed
