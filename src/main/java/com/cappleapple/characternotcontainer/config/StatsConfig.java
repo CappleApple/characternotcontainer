@@ -25,10 +25,9 @@ public final class StatsConfig {
         flyingSpeed.suffix = "%";
         config.attributes.add(flyingSpeed);
 
-        config.attributes.add(new StatDefinition("minecraft:generic.jump_strength", StatFormat.DECIMAL, 2));
-        config.attributes.add(new StatDefinition("minecraft:generic.step_height", StatFormat.DECIMAL, 1));
-        config.attributes.add(new StatDefinition("minecraft:player.block_interaction_range", StatFormat.DECIMAL, 1));
-        config.attributes.add(new StatDefinition("minecraft:player.entity_interaction_range", StatFormat.DECIMAL, 1));
+        config.attributes.add(new StatDefinition("forge:step_height_addition", StatFormat.DECIMAL, 1));
+        config.attributes.add(new StatDefinition("forge:block_reach", StatFormat.DECIMAL, 1));
+        config.attributes.add(new StatDefinition("forge:entity_reach", StatFormat.DECIMAL, 1));
         config.attributes.add(new StatDefinition("minecraft:generic.luck", StatFormat.DECIMAL, 1));
         return config;
     }

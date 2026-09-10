@@ -19,8 +19,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.capabilities.Capabilities;
-import net.neoforged.neoforge.items.IItemHandler;
+import net.minecraftforge.common.capabilities.ForgeCapabilities;
+import net.minecraftforge.items.IItemHandler;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -40,6 +40,20 @@ public final class NearbyEquipmentSources {
     private static final Map<UUID, SearchSession> SESSIONS = new HashMap<>();
 
     private NearbyEquipmentSources() {}
+
+    private static boolean canTakeFromStand(ArmorStand stand, EquipmentSlot slot) {
+        var tag = stand.saveWithoutId(new net.minecraft.nbt.CompoundTag());
+        int disabled = tag.getInt("DisabledSlots");
+        return (disabled & (1 << slot.getFilterFlag())) == 0
+                && (disabled & (1 << (slot.getFilterFlag() + 8))) == 0
+                && (slot.getType() != EquipmentSlot.Type.HAND || stand.isShowArms());
+    }
+
+    private static IItemHandler blockHandler(net.minecraft.world.level.Level level, BlockPos pos, Direction side) {
+        if (!level.hasChunkAt(pos)) return null;
+        var blockEntity = level.getBlockEntity(pos);
+        return blockEntity == null ? null : blockEntity.getCapability(ForgeCapabilities.ITEM_HANDLER, side).orElse(null);
+    }
 
     public static NearbyEquipmentResponsePayload search(ServerPlayer player, NearbyEquipmentRequestPayload request,
                                                           EquipmentTargetAccess target) {
@@ -82,12 +96,12 @@ public final class NearbyEquipmentSources {
         SourceCandidate candidate = session.candidates.get(payload.sourceIndex());
         if (!candidate.source.inRange(player) || !target.canRemove()) return false;
         ItemStack simulated = candidate.source.extractOne(player, true);
-        if (simulated.isEmpty() || !ItemStack.isSameItemSameComponents(simulated, candidate.displayStack)
+        if (simulated.isEmpty() || !ItemStack.isSameItemSameTags(simulated, candidate.displayStack)
                 || !target.accepts(simulated)) return false;
 
         IItemHandler playerInventory = PlayerInventoryAccess.handler(player);
         ItemStack extracted = candidate.source.extractOne(player, false);
-        if (extracted.isEmpty() || !ItemStack.isSameItemSameComponents(extracted, simulated)) {
+        if (extracted.isEmpty() || !ItemStack.isSameItemSameTags(extracted, simulated)) {
             if (!extracted.isEmpty() && !candidate.source.restore(player, extracted)) {
                 CharacterNotContainer.LOGGER.error("Could not restore an unexpected extraction from a nearby source for {}",
                         player.getGameProfile().getName());
@@ -118,7 +132,7 @@ public final class NearbyEquipmentSources {
                 || payload.sourceIndex() < 0 || payload.sourceIndex() >= session.candidates.size()) return Optional.empty();
         SourceCandidate candidate = session.candidates.get(payload.sourceIndex());
         if (!candidate.source.inRange(player)
-                || !ItemStack.isSameItemSameComponents(candidate.source.extractOne(player, true), candidate.displayStack)) {
+                || !ItemStack.isSameItemSameTags(candidate.source.extractOne(player, true), candidate.displayStack)) {
             return Optional.empty();
         }
         var source = candidate.source.researchSource(player);
@@ -153,7 +167,7 @@ public final class NearbyEquipmentSources {
                                          Set<IItemHandler> visitedHandlers, Set<CandidateIdentity> seenCandidates) {
         IItemHandler handler;
         try {
-            handler = level.getCapability(Capabilities.ItemHandler.BLOCK, pos, side);
+            handler = blockHandler(level, pos, side);
         } catch (RuntimeException exception) {
             CharacterNotContainer.LOGGER.debug("Nearby item-handler lookup failed at {} from side {}", pos, side, exception);
             return;
@@ -188,8 +202,8 @@ public final class NearbyEquipmentSources {
         IItemHandler handler;
         try {
             handler = kind == EntityHandlerKind.NORMAL
-                    ? entity.getCapability(Capabilities.ItemHandler.ENTITY, null)
-                    : entity.getCapability(Capabilities.ItemHandler.ENTITY_AUTOMATION, side);
+                    ? entity.getCapability(ForgeCapabilities.ITEM_HANDLER).orElse(null)
+                    : entity.getCapability(ForgeCapabilities.ITEM_HANDLER, side).orElse(null);
         } catch (RuntimeException exception) {
             CharacterNotContainer.LOGGER.debug("Nearby entity item-handler lookup failed for {}", entity, exception);
             return;
@@ -206,7 +220,7 @@ public final class NearbyEquipmentSources {
             ItemStack extractable = handler.extractItem(slot, 1, true);
             if (extractable.isEmpty() || !target.accepts(extractable)) continue;
             CandidateIdentity identity = new CandidateIdentity(source.physicalSource(), slot,
-                    ItemStack.hashItemAndComponents(stack), stack.getCount());
+                    java.util.Objects.hash(stack.getItem(), stack.getTag()), stack.getCount());
             if (!seenCandidates.add(identity)) continue;
             result.add(new SourceCandidate(source.atSlot(slot), stack.copy()));
         }
@@ -214,7 +228,7 @@ public final class NearbyEquipmentSources {
 
     private static void scanArmorStand(EquipmentTargetAccess target, ArmorStand stand, List<SourceCandidate> result) {
         for (EquipmentSlot slot : ARMOR_STAND_SLOTS) {
-            if (result.size() >= NearbyEquipmentResponsePayload.MAX_ENTRIES || !stand.canUseSlot(slot)) continue;
+            if (result.size() >= NearbyEquipmentResponsePayload.MAX_ENTRIES || !canTakeFromStand(stand, slot)) continue;
             ItemStack stack = stand.getItemBySlot(slot);
             if (!stack.isEmpty() && target.accepts(single(stack))) {
                 result.add(new SourceCandidate(new ArmorStandSource(stand.getUUID(), slot), stack.copy()));
@@ -273,7 +287,7 @@ public final class NearbyEquipmentSources {
         @Override
         public ItemStack extractOne(ServerPlayer player, boolean simulate) {
             if (!inRange(player)) return ItemStack.EMPTY;
-            IItemHandler handler = player.serverLevel().getCapability(Capabilities.ItemHandler.BLOCK, pos, side);
+            IItemHandler handler = blockHandler(player.serverLevel(), pos, side);
             return handler == null || slot < 0 || slot >= handler.getSlots()
                     ? ItemStack.EMPTY : handler.extractItem(slot, 1, simulate);
         }
@@ -281,7 +295,7 @@ public final class NearbyEquipmentSources {
         @Override
         public boolean restore(ServerPlayer player, ItemStack stack) {
             if (!inRange(player)) return false;
-            IItemHandler handler = player.serverLevel().getCapability(Capabilities.ItemHandler.BLOCK, pos, side);
+            IItemHandler handler = blockHandler(player.serverLevel(), pos, side);
             if (handler == null || slot < 0 || slot >= handler.getSlots()
                     || !handler.insertItem(slot, stack.copy(), true).isEmpty()) return false;
             return handler.insertItem(slot, stack.copy(), false).isEmpty();
@@ -290,7 +304,7 @@ public final class NearbyEquipmentSources {
         @Override
         public RelicResearchSource researchSource(ServerPlayer player) {
             return RelicResearchSource.handler(
-                    () -> inRange(player) ? player.serverLevel().getCapability(Capabilities.ItemHandler.BLOCK, pos, side) : null,
+                    () -> inRange(player) ? blockHandler(player.serverLevel(), pos, side) : null,
                     slot, () -> inRange(player), () -> {
                         var blockEntity = player.serverLevel().getBlockEntity(pos);
                         if (blockEntity != null) blockEntity.setChanged();
@@ -326,8 +340,8 @@ public final class NearbyEquipmentSources {
             Entity entity = player.serverLevel().getEntity(entityId);
             if (entity == null || !inRange(player)) return ItemStack.EMPTY;
             IItemHandler handler = kind == EntityHandlerKind.NORMAL
-                    ? entity.getCapability(Capabilities.ItemHandler.ENTITY, null)
-                    : entity.getCapability(Capabilities.ItemHandler.ENTITY_AUTOMATION, side);
+                    ? entity.getCapability(ForgeCapabilities.ITEM_HANDLER).orElse(null)
+                    : entity.getCapability(ForgeCapabilities.ITEM_HANDLER, side).orElse(null);
             return handler == null || slot < 0 || slot >= handler.getSlots()
                     ? ItemStack.EMPTY : handler.extractItem(slot, 1, simulate);
         }
@@ -337,8 +351,8 @@ public final class NearbyEquipmentSources {
             Entity entity = player.serverLevel().getEntity(entityId);
             if (entity == null || !inRange(player)) return false;
             IItemHandler handler = kind == EntityHandlerKind.NORMAL
-                    ? entity.getCapability(Capabilities.ItemHandler.ENTITY, null)
-                    : entity.getCapability(Capabilities.ItemHandler.ENTITY_AUTOMATION, side);
+                    ? entity.getCapability(ForgeCapabilities.ITEM_HANDLER).orElse(null)
+                    : entity.getCapability(ForgeCapabilities.ITEM_HANDLER, side).orElse(null);
             if (handler == null || slot < 0 || slot >= handler.getSlots()
                     || !handler.insertItem(slot, stack.copy(), true).isEmpty()) return false;
             return handler.insertItem(slot, stack.copy(), false).isEmpty();
@@ -349,8 +363,8 @@ public final class NearbyEquipmentSources {
             return RelicResearchSource.handler(() -> {
                 Entity entity = player.serverLevel().getEntity(entityId);
                 return entity == null || !inRange(player) ? null : kind == EntityHandlerKind.NORMAL
-                        ? entity.getCapability(Capabilities.ItemHandler.ENTITY, null)
-                        : entity.getCapability(Capabilities.ItemHandler.ENTITY_AUTOMATION, side);
+                        ? entity.getCapability(ForgeCapabilities.ITEM_HANDLER).orElse(null)
+                        : entity.getCapability(ForgeCapabilities.ITEM_HANDLER, side).orElse(null);
             }, slot, () -> inRange(player), () -> {});
         }
 
@@ -366,7 +380,7 @@ public final class NearbyEquipmentSources {
         @Override
         public ItemStack extractOne(ServerPlayer player, boolean simulate) {
             Entity entity = player.serverLevel().getEntity(entityId);
-            if (!(entity instanceof ArmorStand stand) || !stand.canUseSlot(slot) || !inRange(player)) return ItemStack.EMPTY;
+            if (!(entity instanceof ArmorStand stand) || !canTakeFromStand(stand, slot) || !inRange(player)) return ItemStack.EMPTY;
             ItemStack current = stand.getItemBySlot(slot);
             if (current.isEmpty()) return ItemStack.EMPTY;
             ItemStack extracted = single(current);
@@ -381,13 +395,13 @@ public final class NearbyEquipmentSources {
         @Override
         public boolean restore(ServerPlayer player, ItemStack stack) {
             Entity entity = player.serverLevel().getEntity(entityId);
-            if (!(entity instanceof ArmorStand stand) || !stand.canUseSlot(slot) || !inRange(player)) return false;
+            if (!(entity instanceof ArmorStand stand) || !canTakeFromStand(stand, slot) || !inRange(player)) return false;
             ItemStack current = stand.getItemBySlot(slot);
             if (current.isEmpty()) {
                 stand.setItemSlot(slot, stack.copy());
                 return true;
             }
-            if (!ItemStack.isSameItemSameComponents(current, stack)
+            if (!ItemStack.isSameItemSameTags(current, stack)
                     || current.getCount() + stack.getCount() > current.getMaxStackSize()) return false;
             ItemStack restored = current.copy();
             restored.grow(stack.getCount());
@@ -399,7 +413,7 @@ public final class NearbyEquipmentSources {
         public RelicResearchSource researchSource(ServerPlayer player) {
             return new RelicResearchSource(() -> {
                 Entity entity = player.serverLevel().getEntity(entityId);
-                return entity instanceof ArmorStand stand && stand.canUseSlot(slot) && inRange(player)
+                return entity instanceof ArmorStand stand && canTakeFromStand(stand, slot) && inRange(player)
                         ? stand.getItemBySlot(slot) : ItemStack.EMPTY;
             }, () -> inRange(player), () -> {});
         }

@@ -6,48 +6,49 @@ license="${mod_license}"
 modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
+displayTest="IGNORE_ALL_VERSION"
 description='''
 A direct character and equipment screen with changed attributes, body-region equipment selection, and optional Curios integration.
 '''
 
 [[dependencies.${mod_id}]]
-modId="neoforge"
-type="required"
-versionRange="[${neo_version},)"
+modId="forge"
+mandatory=true
+versionRange="[${forge_version},)"
 ordering="NONE"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="minecraft"
-type="required"
+mandatory=true
 versionRange="${minecraft_version_range}"
 ordering="NONE"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="curios"
-type="optional"
+mandatory=false
 versionRange="${curios_version_range}"
 ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="needs_not_necessities"
-type="optional"
+mandatory=false
 versionRange="[1.1,)"
 ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="puffish_skills"
-type="optional"
+mandatory=false
 versionRange="${puffish_skills_version_range}"
 ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="armordamagescale"
-type="optional"
+mandatory=false
 versionRange="${armor_damage_scaling_version_range}"
 ordering="AFTER"
 side="BOTH"

@@ -16,7 +16,7 @@ class StatsConfigTest {
 
     @Test
     void bundledStatsAreAFlatAttributeCatalog() {
-        assertTrue(StatsConfig.defaults().attributes.size() >= 14);
+        assertTrue(StatsConfig.defaults().attributes.size() >= 13);
         assertTrue(StatsConfig.defaults().attributes.stream()
                 .allMatch(stat -> stat.attribute != null && !stat.attribute.isBlank()));
         assertTrue(StatsConfig.defaults().attributes.stream().allMatch(stat -> stat.visible));

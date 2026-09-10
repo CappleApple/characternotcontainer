@@ -1,6 +1,5 @@
 package com.cappleapple.characternotcontainer.client;
 
-import net.minecraft.core.Holder;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
@@ -13,7 +12,7 @@ public interface CuriosClientIntegration {
     List<CurioSlotView> slots(Player player, boolean cosmetic);
     boolean isValid(Player player, CurioSlotView slot, ItemStack stack);
     void toggleRendering(Player player, CurioSlotView slot);
-    List<EquipmentContribution> contributions(Player player, Holder<Attribute> attribute);
+    List<EquipmentContribution> contributions(Player player, Attribute attribute);
 
     static boolean useCosmeticStorage(boolean cosmeticView, boolean hasCosmeticStorage) {
         return cosmeticView && hasCosmeticStorage;

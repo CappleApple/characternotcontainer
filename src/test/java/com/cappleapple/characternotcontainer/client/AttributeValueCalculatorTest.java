@@ -1,7 +1,5 @@
 package com.cappleapple.characternotcontainer.client;
 
-import net.minecraft.core.Holder;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
@@ -61,12 +59,12 @@ class AttributeValueCalculatorTest {
     }
 
     private static AttributeModifier modifier(String path, double amount) {
-        return new AttributeModifier(ResourceLocation.fromNamespaceAndPath("test", path), amount,
-                AttributeModifier.Operation.ADD_VALUE);
+        return new AttributeModifier(java.util.UUID.nameUUIDFromBytes(path.getBytes(java.nio.charset.StandardCharsets.UTF_8)), path, amount,
+                AttributeModifier.Operation.ADDITION);
     }
 
     private static AttributeInstance instance(Attribute attribute) {
-        return new AttributeInstance(Holder.direct(attribute), ignored -> {});
+        return new AttributeInstance(attribute, ignored -> {});
     }
 
     private static final class IdentityAttribute extends Attribute {

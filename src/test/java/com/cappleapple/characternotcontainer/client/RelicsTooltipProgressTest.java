@@ -41,6 +41,15 @@ class RelicsTooltipProgressTest {
         assertEquals(6, ChangedHandler.ticksCountOld);
     }
 
+    @Test void forgeRelicsSingleCounterIsRestored() throws Exception {
+        RelicsTooltipProgress bridge = new RelicsTooltipProgress(ForgeHandler.class);
+        ForgeHandler.ticksCount = 3;
+        bridge.render(new ResearchHold.Progress(14, 15), () -> assertEquals(15, ForgeHandler.ticksCount));
+        assertEquals(3, ForgeHandler.ticksCount);
+    }
+
+    private static class ForgeHandler { private static int ticksCount; }
+
     private static class Handler {
         private static int ticksCountOld;
         private static int ticksCount;

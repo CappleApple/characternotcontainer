@@ -2,7 +2,6 @@ package com.cappleapple.characternotcontainer.compat.puffishskills;
 
 import com.cappleapple.characternotcontainer.CharacterNotContainer;
 import com.cappleapple.characternotcontainer.network.ModifierSourcesResponsePayload;
-import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
@@ -11,8 +10,8 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.fml.ModList;
-import net.neoforged.neoforge.event.server.ServerStartedEvent;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.event.server.ServerStartedEvent;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -171,7 +170,7 @@ public final class PufferfishSkillsSourceBridge {
             rewardInstance = rewardConfigType.getMethod("instance");
 
             attributeRewardType = Class.forName("net.puffish.skillsmod.reward.builtin.AttributeReward");
-            attributeRewardIds = attributeRewardType.getDeclaredField("ids");
+            attributeRewardIds = attributeRewardType.getDeclaredField("uuids");
             attributeRewardIds.setAccessible(true);
             attributeRewardAttribute = attributeRewardType.getDeclaredField("attribute");
             attributeRewardAttribute.setAccessible(true);
@@ -204,13 +203,13 @@ public final class PufferfishSkillsSourceBridge {
                                       LevelledTitle levelledTitle)
                 throws IllegalAccessException {
             Object rawHolder = attributeRewardAttribute.get(reward);
-            if (!(rawHolder instanceof Holder<?> holder) || !(holder.value() instanceof Attribute attribute)) return;
+            if (!(rawHolder instanceof Attribute attribute)) return;
             ResourceLocation attributeId = BuiltInRegistries.ATTRIBUTE.getKey(attribute);
             if (attributeId == null) return;
-            AttributeInstance instance = player.getAttribute((Holder<Attribute>)holder);
+            AttributeInstance instance = player.getAttribute(attribute);
             if (instance == null) return;
             for (Object rawId : collection(attributeRewardIds.get(reward))) {
-                if (rawId instanceof ResourceLocation modifierId && instance.getModifier(modifierId) != null) {
+                if (rawId instanceof java.util.UUID modifierId && instance.getModifier(modifierId) != null) {
                     result.add(new ActiveReward(attributeId, modifierId, source, levelledTitle));
                 }
             }
@@ -243,7 +242,7 @@ public final class PufferfishSkillsSourceBridge {
         return List.copyOf(result);
     }
 
-    record ActiveReward(ResourceLocation attributeId, ResourceLocation modifierId,
+    record ActiveReward(ResourceLocation attributeId, java.util.UUID modifierId,
                         ModifierSourcesResponsePayload.Source source, LevelledTitle levelledTitle) {}
 
     private record GroupKey(ResourceLocation attributeId, String normalizedBase) {}

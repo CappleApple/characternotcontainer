@@ -13,19 +13,19 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.Enchantments;
-import net.neoforged.fml.ModList;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
 @GameTestHolder(CharacterNotContainer.MOD_ID)
 @PrefixGameTestTemplate(false)
 @SuppressWarnings("removal")
 public final class ArmorDamageScalingGameTests {
-    private static final String EMPTY_TEMPLATE = "bastion/mobs/empty";
+    private static final String EMPTY_TEMPLATE = "empty";
 
     private ArmorDamageScalingGameTests() {}
 
-    @GameTest(templateNamespace = "minecraft", template = EMPTY_TEMPLATE)
+    @GameTest(templateNamespace = CharacterNotContainer.MOD_ID, template = EMPTY_TEMPLATE)
     public static void resistanceSnapshotUsesLiveArmorAndProtectionPipeline(GameTestHelper helper)
             throws ReflectiveOperationException {
         if (!ModList.get().isLoaded("armordamagescale")) {
@@ -33,25 +33,22 @@ public final class ArmorDamageScalingGameTests {
             return;
         }
 
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        ServerPlayer player = com.cappleapple.characternotcontainer.gametest.GameTestPlayers.create(helper);
         player.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.DIAMOND_HELMET));
         ItemStack chestplate = new ItemStack(Items.DIAMOND_CHESTPLATE);
-        chestplate.enchant(helper.getLevel().registryAccess()
-                .registryOrThrow(Registries.ENCHANTMENT)
-                .getHolderOrThrow(Enchantments.PROTECTION), 4);
+        chestplate.enchant(Enchantments.ALL_DAMAGE_PROTECTION, 4);
         player.setItemSlot(EquipmentSlot.CHEST, chestplate);
         player.setItemSlot(EquipmentSlot.LEGS, new ItemStack(Items.DIAMOND_LEGGINGS));
         player.setItemSlot(EquipmentSlot.FEET, new ItemStack(Items.DIAMOND_BOOTS));
 
         float incomingDamage = player.getMaxHealth();
-        DamageSource source = new DamageSource(player.registryAccess()
+        DamageSource source = new DamageSource(player.level().registryAccess()
                 .registryOrThrow(Registries.DAMAGE_TYPE)
                 .getHolderOrThrow(DamageTypes.MOB_ATTACK));
         float protection = ArmorDamageScalingBridge.currentProtection(player, source);
-        float armorOnlyDamage = CombatRules.getDamageAfterAbsorb(
-                player, incomingDamage, source, player.getArmorValue(), 0.0F);
+        float armorOnlyDamage = CombatRules.getDamageAfterAbsorb(incomingDamage, player.getArmorValue(), 0.0F);
         armorOnlyDamage = CombatRules.getDamageAfterMagicAbsorb(armorOnlyDamage, protection);
-        float heavyHitDamage = CombatRules.getDamageAfterAbsorb(player, incomingDamage, source,
+        float heavyHitDamage = CombatRules.getDamageAfterAbsorb(incomingDamage,
                 player.getArmorValue(), (float) player.getAttributeValue(Attributes.ARMOR_TOUGHNESS));
         heavyHitDamage = CombatRules.getDamageAfterMagicAbsorb(heavyHitDamage, protection);
 

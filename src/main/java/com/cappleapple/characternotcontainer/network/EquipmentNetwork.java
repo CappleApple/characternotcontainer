@@ -16,12 +16,15 @@ import com.cappleapple.characternotcontainer.equipment.VanillaEquipmentTarget;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.fml.ModList;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.network.PacketDistributor;
-import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
-import net.neoforged.neoforge.items.IItemHandler;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.network.PacketDistributor;
+import net.minecraftforge.network.NetworkRegistry;
+import net.minecraftforge.network.NetworkDirection;
+import net.minecraftforge.network.NetworkEvent;
+import net.minecraftforge.network.simple.SimpleChannel;
+
+import net.minecraftforge.items.IItemHandler;
 
 import java.util.ArrayList;
 import java.util.Optional;
@@ -29,25 +32,51 @@ import java.util.Optional;
 public final class EquipmentNetwork {
     private EquipmentNetwork() {}
 
-    public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("6").optional();
-        // A separate optional channel preserves compatibility with older CNC servers.
-        event.registrar("1").optional().playToServer(RelicResearchPayload.TYPE, RelicResearchPayload.STREAM_CODEC,
-                EquipmentNetwork::handleRelicResearch);
-        registrar.playToServer(EquipmentChangePayload.TYPE, EquipmentChangePayload.STREAM_CODEC, EquipmentNetwork::handleChange);
-        registrar.playToServer(NearbyEquipmentRequestPayload.TYPE, NearbyEquipmentRequestPayload.STREAM_CODEC,
-                EquipmentNetwork::handleNearbyRequest);
-        registrar.playToClient(NearbyEquipmentResponsePayload.TYPE, NearbyEquipmentResponsePayload.STREAM_CODEC,
-                EquipmentNetwork::handleNearbyResponse);
-        registrar.playToServer(ModifierSourcesRequestPayload.TYPE, ModifierSourcesRequestPayload.STREAM_CODEC,
-                EquipmentNetwork::handleModifierSourcesRequest);
-        registrar.playToClient(ModifierSourcesResponsePayload.TYPE, ModifierSourcesResponsePayload.STREAM_CODEC,
-                EquipmentNetwork::handleModifierSourcesResponse);
+    private static final String PROTOCOL = "1";
+    public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
+            CharacterNotContainer.id("equipment"), () -> PROTOCOL,
+            EquipmentNetwork::acceptVersion, EquipmentNetwork::acceptVersion);
+
+    private static boolean acceptVersion(String version) {
+        return PROTOCOL.equals(version) || NetworkRegistry.ABSENT.equals(version)
+                || NetworkRegistry.ACCEPTVANILLA.equals(version);
     }
 
-    private static void handleRelicResearch(RelicResearchPayload payload, IPayloadContext context) {
+    public static void register() {
+        register(0, EquipmentChangePayload.class, EquipmentChangePayload.STREAM_CODEC,
+                NetworkDirection.PLAY_TO_SERVER, EquipmentNetwork::handleChange);
+        register(1, NearbyEquipmentRequestPayload.class, NearbyEquipmentRequestPayload.STREAM_CODEC,
+                NetworkDirection.PLAY_TO_SERVER, EquipmentNetwork::handleNearbyRequest);
+        register(2, NearbyEquipmentResponsePayload.class, NearbyEquipmentResponsePayload.STREAM_CODEC,
+                NetworkDirection.PLAY_TO_CLIENT, EquipmentNetwork::handleNearbyResponse);
+        register(3, ModifierSourcesRequestPayload.class, ModifierSourcesRequestPayload.STREAM_CODEC,
+                NetworkDirection.PLAY_TO_SERVER, EquipmentNetwork::handleModifierSourcesRequest);
+        register(4, ModifierSourcesResponsePayload.class, ModifierSourcesResponsePayload.STREAM_CODEC,
+                NetworkDirection.PLAY_TO_CLIENT, EquipmentNetwork::handleModifierSourcesResponse);
+        register(5, RelicResearchPayload.class, RelicResearchPayload.STREAM_CODEC,
+                NetworkDirection.PLAY_TO_SERVER, EquipmentNetwork::handleRelicResearch);
+    }
+
+    private static <T> void register(int id, Class<T> type, PacketCodec<T> codec, NetworkDirection direction,
+                                     java.util.function.BiConsumer<T, NetworkEvent.Context> handler) {
+        CHANNEL.registerMessage(id, type, (packet, buffer) -> codec.encode(buffer, packet), codec::decode,
+                (packet, supplied) -> {
+                    NetworkEvent.Context context = supplied.get();
+                    handler.accept(packet, context);
+                    context.setPacketHandled(true);
+                }, Optional.of(direction));
+    }
+
+    public static void sendToServer(Object packet) { CHANNEL.sendToServer(packet); }
+
+    private static void sendToPlayer(ServerPlayer player, Object packet) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), packet);
+    }
+
+    private static void handleRelicResearch(RelicResearchPayload payload, NetworkEvent.Context context) {
         context.enqueueWork(() -> {
-            if (!(context.player() instanceof ServerPlayer player) || player.containerMenu != player.inventoryMenu
+            ServerPlayer player = context.getSender();
+            if ((player == null) || player.containerMenu != player.inventoryMenu
                     || !player.isAlive() || !RelicsIntegration.isRelic(payload.expected())) return;
             EquipmentChangePayload target = payload.target();
             var equipment = resolveTarget(player, target);
@@ -72,12 +101,13 @@ public final class EquipmentNetwork {
         if (event.getEntity() instanceof ServerPlayer player) NearbyEquipmentSources.clear(player);
     }
 
-    private static void handleChange(EquipmentChangePayload payload, IPayloadContext context) {
+    private static void handleChange(EquipmentChangePayload payload, NetworkEvent.Context context) {
         context.enqueueWork(() -> handleChangeOnMainThread(payload, context));
     }
 
-    private static void handleChangeOnMainThread(EquipmentChangePayload payload, IPayloadContext context) {
-        if (!(context.player() instanceof ServerPlayer player) || player.containerMenu != player.inventoryMenu) return;
+    private static void handleChangeOnMainThread(EquipmentChangePayload payload, NetworkEvent.Context context) {
+        ServerPlayer player = context.getSender();
+        if ((player == null) || player.containerMenu != player.inventoryMenu) return;
         Optional<EquipmentTargetAccess> resolved = resolveTarget(player, payload);
         boolean changed = resolved.isPresent() && change(player, payload, resolved.get());
         if (changed) {
@@ -105,33 +135,35 @@ public final class EquipmentNetwork {
         return EquipmentTransactions.swapFromInventory(inventory, inventoryIndex, target::equipped, target::set);
     }
 
-    private static void handleNearbyRequest(NearbyEquipmentRequestPayload request, IPayloadContext context) {
+    private static void handleNearbyRequest(NearbyEquipmentRequestPayload request, NetworkEvent.Context context) {
         context.enqueueWork(() -> {
-            if (!(context.player() instanceof ServerPlayer player) || player.containerMenu != player.inventoryMenu) return;
+            ServerPlayer player = context.getSender();
+            if ((player == null) || player.containerMenu != player.inventoryMenu) return;
             EquipmentChangePayload targetPayload = new EquipmentChangePayload(request.system(), request.slotId(),
                     request.slotIndex(), request.cosmetic(), EquipmentChangePayload.SourceKind.UNEQUIP, -1, request.searchId());
             NearbyEquipmentResponsePayload response = resolveTarget(player, targetPayload)
                     .map(target -> NearbyEquipmentSources.search(player, request, target))
                     .orElseGet(() -> new NearbyEquipmentResponsePayload(request.searchId(), false, java.util.List.of()));
-            PacketDistributor.sendToPlayer(player, response);
+            sendToPlayer(player, response);
         });
     }
 
-    private static void handleNearbyResponse(NearbyEquipmentResponsePayload response, IPayloadContext context) {
+    private static void handleNearbyResponse(NearbyEquipmentResponsePayload response, NetworkEvent.Context context) {
         context.enqueueWork(() -> ClientAccess.accept(response));
     }
 
-    private static void handleModifierSourcesRequest(ModifierSourcesRequestPayload request, IPayloadContext context) {
+    private static void handleModifierSourcesRequest(ModifierSourcesRequestPayload request, NetworkEvent.Context context) {
         context.enqueueWork(() -> {
-            if (!(context.player() instanceof ServerPlayer player)) return;
+            ServerPlayer player = context.getSender();
+            if ((player == null)) return;
             var entries = new ArrayList<>(NeedsNotNecessitiesSourceBridge.sources(player));
             entries.addAll(PufferfishSkillsSourceBridge.sources(player));
-            PacketDistributor.sendToPlayer(player, new ModifierSourcesResponsePayload(
+            sendToPlayer(player, new ModifierSourcesResponsePayload(
                     entries, ArmorDamageScalingBridge.values(player)));
         });
     }
 
-    private static void handleModifierSourcesResponse(ModifierSourcesResponsePayload response, IPayloadContext context) {
+    private static void handleModifierSourcesResponse(ModifierSourcesResponsePayload response, NetworkEvent.Context context) {
         context.enqueueWork(() -> ClientAccess.accept(response));
     }
 

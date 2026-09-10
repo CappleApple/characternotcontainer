@@ -48,9 +48,9 @@ final class ResolvedStatCatalog {
         for (StatDefinition definition : definitions.values()) {
             ResourceLocation id = ResourceLocation.tryParse(definition.attribute);
             var holder = id == null ? java.util.Optional.<net.minecraft.core.Holder.Reference<Attribute>>empty()
-                    : BuiltInRegistries.ATTRIBUTE.getHolder(id);
+                    : BuiltInRegistries.ATTRIBUTE.getHolder(net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.ATTRIBUTE, id));
             if (holder.isPresent()) {
-                result.add(new ResolvedStat(definition, holder.get()));
+                result.add(new ResolvedStat(definition, holder.get().value()));
             } else if (WARNED_MISSING.add(definition.attribute)) {
                 CharacterNotContainer.LOGGER.warn("Skipping unknown configured attribute {}", definition.attribute);
             }

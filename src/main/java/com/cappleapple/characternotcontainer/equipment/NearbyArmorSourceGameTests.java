@@ -18,9 +18,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
-import net.neoforged.neoforge.items.IItemHandler;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.items.IItemHandler;
 
 import java.util.List;
 
@@ -29,7 +29,7 @@ import java.util.List;
 @SuppressWarnings("removal")
 
 public final class NearbyArmorSourceGameTests {
-    private static final String EMPTY_TEMPLATE = "bastion/mobs/empty";
+    private static final String EMPTY_TEMPLATE = "empty";
     private static final List<ArmorCase> ARMOR_CASES = List.of(
             new ArmorCase(EquipmentSlot.HEAD, Items.IRON_HELMET, Items.DIAMOND_HELMET),
             new ArmorCase(EquipmentSlot.CHEST, Items.IRON_CHESTPLATE, Items.DIAMOND_CHESTPLATE),
@@ -38,7 +38,7 @@ public final class NearbyArmorSourceGameTests {
 
     private NearbyArmorSourceGameTests() {}
 
-    @GameTest(templateNamespace = "minecraft", template = EMPTY_TEMPLATE)
+    @GameTest(templateNamespace = CharacterNotContainer.MOD_ID, template = EMPTY_TEMPLATE)
     public static void equipsVanillaArmorFromNearbyContainer(GameTestHelper helper) {
         ServerPlayer player = GameTestPlayers.create(helper);
         BlockPos chestPos = player.blockPosition().offset(1, 0, 0);
@@ -61,7 +61,7 @@ public final class NearbyArmorSourceGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = "minecraft", template = EMPTY_TEMPLATE)
+    @GameTest(templateNamespace = CharacterNotContainer.MOD_ID, template = EMPTY_TEMPLATE)
     public static void equipsVanillaArmorFromNearbyArmorStand(GameTestHelper helper) {
         ServerPlayer player = GameTestPlayers.create(helper);
         ArmorStand stand = new ArmorStand(helper.getLevel(), player.getX() + 1.0D, player.getY(), player.getZ());

@@ -1,17 +1,17 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
-    id 'net.neoforged.moddev' version '2.0.143'
+    id 'net.neoforged.moddev.legacyforge' version '2.0.143'
 }
 
 version = mod_version
 group = mod_group_id
 
 base {
-    archivesName = mod_id
+    archivesName = "${mod_id}-forge"
 }
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
 repositories {
     maven {
@@ -31,8 +31,9 @@ repositories {
     }
 }
 
-neoForge {
-    version = project.neo_version
+legacyForge {
+    version = "${minecraft_version}-${forge_version}"
+    validateAccessTransformers = true
 
     parchment {
         mappingsVersion = project.parchment_mappings_version
@@ -41,11 +42,15 @@ neoForge {
 
     runs {
         configureEach {
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            gameDirectory = file("run/forge-${name}" + (project.hasProperty('skipCuriosRuntime') ? '-standalone' : ''))
+            systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
             logLevel = org.slf4j.event.Level.INFO
         }
         client {
             client()
+            if (project.hasProperty('clientSmoke')) {
+                systemProperty 'characternotcontainer.clientSmoke', 'true'
+            }
         }
         server {
             server()
@@ -53,7 +58,7 @@ neoForge {
         }
         gameTestServer {
             type = 'gameTestServer'
-            systemProperty 'neoforge.enabledGameTestNamespaces', "${project.mod_id},minecraft"
+            systemProperty 'forge.enabledGameTestNamespaces', "${project.mod_id},minecraft"
         }
     }
 
@@ -63,71 +68,41 @@ neoForge {
         }
     }
 
-    unitTest {
-        enable()
-        testedMod = mods."${mod_id}"
-    }
 }
 
-configurations {
-    runtimeClasspath.extendsFrom localRuntime
-}
 
 dependencies {
-    // The public API exposes capability access but not Curios' server-authoritative menu
-    // opener/screen. The full artifact is compile-only and every reference stays in the
-    // guarded compat package so Curios remains genuinely optional at runtime.
-    compileOnly "top.theillusivec4.curios:curios-neoforge:${curios_version}"
+    // Curios stays optional; remap its Forge artifact from SRG to official names.
+    modCompileOnly "top.theillusivec4.curios:curios-forge:${curios_version}"
     if (!project.hasProperty('skipCuriosRuntime')) {
-        localRuntime "top.theillusivec4.curios:curios-neoforge:${curios_version}"
-        // A content mod is development-only so the dynamic Curios anchors can be
-        // exercised with real slot assignments and items. It is never packaged.
-        localRuntime "maven.modrinth:P0Mu4wcQ:rGPw090r"
+        modRuntimeOnly "top.theillusivec4.curios:curios-forge:${curios_version}"
     }
-    if (!project.hasProperty('skipSophisticatedStorageRuntime')) {
-        // Development-only compatibility coverage for generic NeoForge item
-        // handlers. Neither Sophisticated mod is packaged in the release JAR.
-        localRuntime "maven.modrinth:nmoqTijg:${sophisticated_core_version}"
-        localRuntime "maven.modrinth:hMlaZH8f:${sophisticated_storage_version}"
-    }
-    if (project.hasProperty('needsNotNecessitiesRuntimeJar')) {
-        // Optional local development hook for exercising the direct integration.
-        localRuntime files(project.property('needsNotNecessitiesRuntimeJar'))
-    }
-    if (project.hasProperty('pufferfishSkillsRuntimeJar')) {
-        // Optional local development hook for exercising the direct integration.
-        localRuntime files(project.property('pufferfishSkillsRuntimeJar'))
-    }
-    if (project.hasProperty('armorDamageScalingRuntimeJar')) {
-        // Optional local development hooks for exercising Armor Damage Scaling and Cupboard.
-        localRuntime files(project.property('armorDamageScalingRuntimeJar'))
-    }
-    if (project.hasProperty('cupboardRuntimeJar')) {
-        localRuntime files(project.property('cupboardRuntimeJar'))
-    }
-    if (project.hasProperty('relicsRuntimeJar')) {
-        localRuntime files(project.property('relicsRuntimeJar'))
-    }
-    if (project.hasProperty('octoLibRuntimeJar')) {
-        localRuntime files(project.property('octoLibRuntimeJar'))
-    }
-    if (project.hasProperty('architecturyRuntimeJar')) {
-        localRuntime files(project.property('architecturyRuntimeJar'))
+    // Flat-directory module coordinates let the legacy toolchain remap local SRG JARs.
+    ['needsNotNecessitiesRuntimeJar', 'pufferfishSkillsRuntimeJar', 'armorDamageScalingRuntimeJar',
+     'cupboardRuntimeJar', 'relicsRuntimeJar', 'octoLibRuntimeJar', 'architecturyRuntimeJar'].each { propertyName ->
+        if (project.hasProperty(propertyName)) {
+            def localJar = file(project.property(propertyName))
+            repositories.flatDir { dirs localJar.parentFile }
+            modRuntimeOnly group: 'local.compat', name: localJar.name.replaceFirst(/\.jar$/, ''), version: 'local'
+        }
     }
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
+sourceSets.test.compileClasspath += sourceSets.main.compileClasspath
+sourceSets.test.runtimeClasspath += sourceSets.main.runtimeClasspath
+
 tasks.named('test', Test).configure {
     useJUnitPlatform()
 }
 
-def generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+def generateModMetadata = tasks.register('generateModMetadata', Sync) {
     def replaceProperties = [
         minecraft_version: minecraft_version,
         minecraft_version_range: minecraft_version_range,
-        neo_version: neo_version,
+        forge_version: forge_version,
         loader_version_range: loader_version_range,
         mod_id: mod_id,
         mod_name: mod_name,
@@ -144,31 +119,43 @@ def generateModMetadata = tasks.register('generateModMetadata', ProcessResources
 }
 
 sourceSets.main.resources.srcDir generateModMetadata
-neoForge.ideSyncTask generateModMetadata
+legacyForge.ideSyncTask generateModMetadata
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
 tasks.named('jar', Jar).configure {
-    exclude 'com/cappleapple/characternotcontainer/compat/armordamagescaling/ArmorDamageScalingGameTests.class'
-    exclude 'com/cappleapple/characternotcontainer/equipment/NearbyArmorSourceGameTests*.class'
-    exclude 'com/cappleapple/characternotcontainer/compat/relics/RelicResearchGameTests*.class'
+    exclude 'data/characternotcontainer/structures/empty.nbt'
+    exclude '**/*GameTests*.class'
     exclude 'com/cappleapple/characternotcontainer/gametest/**'
 }
 
-def releaseJar = tasks.named('jar', Jar).flatMap { it.archiveFile }
+def releaseJar = tasks.named('reobfJar').flatMap { it.archiveFile }
 tasks.register('verifyReleaseJarContents') {
-    dependsOn tasks.named('jar')
+    dependsOn tasks.named('reobfJar')
     inputs.file(releaseJar)
     doLast {
         def jarFile = releaseJar.get().asFile
         def zip = new java.util.zip.ZipFile(jarFile)
         try {
-            ['META-INF/neoforge.mods.toml', 'assets/characternotcontainer/lang/en_us.json',
+            ['META-INF/mods.toml', 'assets/characternotcontainer/lang/en_us.json',
              'assets/characternotcontainer/ui/equipment_screen.json',
              'assets/characternotcontainer/ui/slots.json'].each {
                 if (zip.getEntry(it) == null) throw new GradleException("Missing required JAR entry: ${it}")
+            }
+            zip.entries().each { entry ->
+                if (entry.name == 'META-INF/neoforge.mods.toml' || entry.name.contains('GameTests')
+                        || entry.name.contains('/gametest/') || entry.name.endsWith('/structures/empty.nbt')) {
+                    throw new GradleException("Development or wrong-loader entry in release JAR: ${entry.name}")
+                }
+                if (entry.name.endsWith('.class')) {
+                    zip.getInputStream(entry).withCloseable { stream ->
+                        def data = new DataInputStream(stream)
+                        data.readInt(); data.readUnsignedShort()
+                        if (data.readUnsignedShort() != 61) throw new GradleException("Non-Java-17 class: ${entry.name}")
+                    }
+                }
             }
         } finally {
             zip.close()

@@ -53,7 +53,7 @@ public final class CharacterGuiSprites {
     }
 
     static ResourceLocation textureFile(ResourceLocation sprite) {
-        return ResourceLocation.fromNamespaceAndPath(sprite.getNamespace(),
+        return new ResourceLocation(sprite.getNamespace(),
                 "textures/gui/sprites/" + sprite.getPath() + ".png");
     }
 }

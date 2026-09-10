@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3.8 - 2026-09-09
+
+### Added
+
+- Added the Forge 1.20.1 port with Java 17 support, Forge networking and inventory capabilities, and Curios 5 integration.
+- Added 1.20.1 Relics research and UUID-based Pufferfish Skills source attribution.
+
+### Changed
+
+- Changed this branch's release JAR name to `characternotcontainer-forge-1.3.8.jar`.
+- Changed the default reach and step attributes to their Forge 1.20.1 registry IDs.
+
+### Fixed
+
+- Fixed player-preview compositing hiding the character controls on Minecraft 1.20.1.
+
 ## 1.3.7 - 2026-09-09
 
 ### Fixed

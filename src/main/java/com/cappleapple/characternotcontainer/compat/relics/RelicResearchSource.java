@@ -1,8 +1,8 @@
 package com.cappleapple.characternotcontainer.compat.relics;
 
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.items.IItemHandler;
-import net.neoforged.neoforge.items.IItemHandlerModifiable;
+import net.minecraftforge.items.IItemHandler;
+import net.minecraftforge.items.IItemHandlerModifiable;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 

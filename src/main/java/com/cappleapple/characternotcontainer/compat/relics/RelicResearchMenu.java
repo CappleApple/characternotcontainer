@@ -11,12 +11,12 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.registries.DeferredHolder;
-import net.neoforged.neoforge.registries.DeferredRegister;
+import net.minecraftforge.registries.RegistryObject;
+import net.minecraftforge.registries.DeferredRegister;
 
 public final class RelicResearchMenu extends AbstractContainerMenu {
     public static final DeferredRegister<MenuType<?>> MENUS = DeferredRegister.create(Registries.MENU, CharacterNotContainer.MOD_ID);
-    public static final DeferredHolder<MenuType<?>, MenuType<RelicResearchMenu>> TYPE = MENUS.register("relic_research",
+    public static final RegistryObject<MenuType<RelicResearchMenu>> TYPE = MENUS.register("relic_research",
             () -> new MenuType<>(RelicResearchMenu::new, FeatureFlags.DEFAULT_FLAGS));
     private final RelicResearchSource source;
     private final ItemStack original;

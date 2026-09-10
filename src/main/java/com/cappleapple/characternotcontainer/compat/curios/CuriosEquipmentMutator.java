@@ -13,7 +13,7 @@ public final class CuriosEquipmentMutator {
     private CuriosEquipmentMutator() {}
 
     public static Optional<EquipmentTargetAccess> resolve(ServerPlayer player, EquipmentChangePayload payload) {
-        return CuriosApi.getCuriosInventory(player).flatMap(handler -> handler.getStacksHandler(payload.slotId()))
+        return CuriosApi.getCuriosInventory(player).resolve().flatMap(handler -> handler.getStacksHandler(payload.slotId()))
                 .map(handler -> {
                     if (payload.slotIndex() < 0 || payload.slotIndex() >= handler.getSlots()) return null;
                     var stacks = payload.cosmetic() ? handler.getCosmeticStacks() : handler.getStacks();
@@ -26,7 +26,7 @@ public final class CuriosEquipmentMutator {
                         @Override
                         public Optional<RelicResearchSource> researchSource() {
                             return Optional.of(RelicResearchSource.handler(
-                                    () -> CuriosApi.getCuriosInventory(player)
+                                    () -> CuriosApi.getCuriosInventory(player).resolve()
                                             .flatMap(inventory -> inventory.getStacksHandler(payload.slotId()))
                                             .map(current -> payload.cosmetic() ? current.getCosmeticStacks() : current.getStacks())
                                             .orElse(null), payload.slotIndex(), player::isAlive, () -> {}));
@@ -43,7 +43,7 @@ public final class CuriosEquipmentMutator {
                             if (equipped.isEmpty()) return true;
                             ItemStack extractable = stacks.extractItem(payload.slotIndex(), equipped.getCount(), true);
                             return extractable.getCount() == equipped.getCount()
-                                    && ItemStack.isSameItemSameComponents(extractable, equipped);
+                                    && ItemStack.isSameItemSameTags(extractable, equipped);
                         }
 
                         @Override

@@ -8,7 +8,10 @@ final class RelicsTooltipProgress {
     private final Field ticks;
 
     RelicsTooltipProgress(Class<?> handler) throws ReflectiveOperationException {
-        previousTicks = counter(handler, "ticksCountOld");
+        Field previous;
+        try { previous = counter(handler, "ticksCountOld"); }
+        catch (NoSuchFieldException ignored) { previous = null; }
+        previousTicks = previous;
         ticks = counter(handler, "ticksCount");
     }
 
@@ -23,14 +26,14 @@ final class RelicsTooltipProgress {
 
     void render(ResearchHold.Progress progress, Runnable renderTooltip) {
         try {
-            int savedPrevious = previousTicks.getInt(null);
+            int savedPrevious = previousTicks == null ? 0 : previousTicks.getInt(null);
             int savedTicks = ticks.getInt(null);
             try {
-                previousTicks.setInt(null, progress.previousTicks());
+                if (previousTicks != null) previousTicks.setInt(null, progress.previousTicks());
                 ticks.setInt(null, progress.ticks());
                 renderTooltip.run();
             } finally {
-                previousTicks.setInt(null, savedPrevious);
+                if (previousTicks != null) previousTicks.setInt(null, savedPrevious);
                 ticks.setInt(null, savedTicks);
             }
         } catch (IllegalAccessException exception) {

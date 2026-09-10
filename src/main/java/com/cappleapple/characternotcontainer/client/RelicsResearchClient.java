@@ -8,14 +8,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.client.settings.KeyConflictContext;
+import net.minecraftforge.client.settings.KeyConflictContext;
 import org.lwjgl.glfw.GLFW;
-import java.lang.reflect.Method;
 
 final class RelicsResearchClient {
     private static boolean checked;
     private static KeyMapping researchKey;
-    private static Method openScreen;
+    private static java.lang.reflect.Constructor<?> researchScreen;
+    private static java.lang.reflect.Field researchStack;
     private static boolean tooltipChecked;
     private static RelicsTooltipProgress tooltipProgress;
     private static final java.util.Set<Integer> pressedScanCodes = new java.util.HashSet<>();
@@ -36,14 +36,14 @@ final class RelicsResearchClient {
             try {
                 researchKey = (KeyMapping)Class.forName("it.hurts.sskirillss.relics.init.HotkeyRegistry")
                         .getField("RESEARCH_RELIC").get(null);
-                openScreen = Class.forName("it.hurts.sskirillss.relics.client.screen.description.misc.DescriptionUtils")
-                        .getMethod("openCachedScreen", Class.forName("it.hurts.sskirillss.relics.items.relics.base.IRelicItem"),
-                                Player.class, int.class, Screen.class);
+                Class<?> screenType = Class.forName("it.hurts.sskirillss.relics.client.screen.description.RelicDescriptionScreen");
+                researchScreen = screenType.getConstructor(Player.class, int.class, int.class, Screen.class);
+                researchStack = screenType.getField("stack");
             } catch (ReflectiveOperationException | LinkageError exception) {
                 CharacterNotContainer.LOGGER.warn("Relics client research integration is unavailable", exception);
             }
         }
-        return researchKey != null && openScreen != null;
+        return researchKey != null && researchScreen != null && researchStack != null;
     }
 
 
@@ -85,7 +85,11 @@ final class RelicsResearchClient {
     static boolean open(ItemStack stack, Screen parent) {
         if (!available(stack)) return false;
         try {
-            openScreen.invoke(null, stack.getItem(), Minecraft.getInstance().player, 0, parent);
+            var minecraft = Minecraft.getInstance();
+            Screen screen = (Screen)researchScreen.newInstance(minecraft.player,
+                    minecraft.player.containerMenu.containerId, 0, parent);
+            researchStack.set(screen, stack);
+            minecraft.setScreen(screen);
             return true;
         } catch (ReflectiveOperationException | LinkageError exception) {
             CharacterNotContainer.LOGGER.warn("Could not open Relics research screen", exception);

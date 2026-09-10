@@ -2,7 +2,7 @@ package com.cappleapple.characternotcontainer.compat.relics;
 
 import com.cappleapple.characternotcontainer.CharacterNotContainer;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.fml.ModList;
+import net.minecraftforge.fml.ModList;
 
 /** Keeps Relics optional, including on dedicated servers. */
 public final class RelicsIntegration {

@@ -49,21 +49,21 @@ class PufferfishSkillsSourceBridgeTest {
 
     @Test
     void everyTierUsesTheHighestActiveTitleAndOneAggregationKey() {
-        ResourceLocation attribute = ResourceLocation.withDefaultNamespace("generic.max_health");
+        ResourceLocation attribute = new ResourceLocation("generic.max_health");
         var first = PufferfishSkillsSourceBridge.sourceForTitle(Component.literal("Vitality I"));
         var fifth = PufferfishSkillsSourceBridge.sourceForTitle(Component.literal("Vitality V"));
         var entries = PufferfishSkillsSourceBridge.groupedEntries(List.of(
                 new PufferfishSkillsSourceBridge.ActiveReward(attribute,
-                        ResourceLocation.fromNamespaceAndPath("test", "vitality_1"), first,
+                        java.util.UUID.fromString("00000000-0000-0000-0000-000000000001"), first,
                         PufferfishSkillsSourceBridge.levelledTitle(first.fallback()).orElseThrow()),
                 new PufferfishSkillsSourceBridge.ActiveReward(attribute,
-                        ResourceLocation.fromNamespaceAndPath("test", "vitality_5"), fifth,
+                        java.util.UUID.fromString("00000000-0000-0000-0000-000000000005"), fifth,
                         PufferfishSkillsSourceBridge.levelledTitle(fifth.fallback()).orElseThrow())));
 
-        assertEquals("Vitality V", entries.get(0).sources().getFirst().fallback());
-        assertEquals("Vitality V", entries.get(1).sources().getFirst().fallback());
-        assertEquals(entries.get(0).sources().getFirst().aggregationKey(),
-                entries.get(1).sources().getFirst().aggregationKey());
-        assertEquals("puffish_skills:vitality", entries.get(0).sources().getFirst().aggregationKey());
+        assertEquals("Vitality V", entries.get(0).sources().get(0).fallback());
+        assertEquals("Vitality V", entries.get(1).sources().get(0).fallback());
+        assertEquals(entries.get(0).sources().get(0).aggregationKey(),
+                entries.get(1).sources().get(0).aggregationKey());
+        assertEquals("puffish_skills:vitality", entries.get(0).sources().get(0).aggregationKey());
     }
 }

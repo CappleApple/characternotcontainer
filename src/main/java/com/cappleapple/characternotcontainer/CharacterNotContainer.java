@@ -8,10 +8,10 @@ import com.cappleapple.characternotcontainer.config.CharacterConfigManager;
 import com.cappleapple.characternotcontainer.network.EquipmentNetwork;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.common.NeoForge;
+import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.common.MinecraftForge;
 import org.slf4j.Logger;
 
 @Mod(CharacterNotContainer.MOD_ID)
@@ -20,17 +20,18 @@ public final class CharacterNotContainer {
     public static final String MOD_ID = "characternotcontainer";
     public static final Logger LOGGER = LogUtils.getLogger();
 
-    public CharacterNotContainer(IEventBus modBus, ModContainer container) {
+    public CharacterNotContainer() {
+        IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
         CharacterConfigManager.load();
         RelicResearchMenu.MENUS.register(modBus);
-        modBus.addListener(EquipmentNetwork::register);
-        NeoForge.EVENT_BUS.addListener(CharacterCommands::register);
-        NeoForge.EVENT_BUS.addListener(EquipmentNetwork::playerLoggedOut);
-        NeoForge.EVENT_BUS.addListener(NeedsNotNecessitiesSourceBridge::serverStarted);
-        NeoForge.EVENT_BUS.addListener(PufferfishSkillsSourceBridge::serverStarted);
+        EquipmentNetwork.register();
+        MinecraftForge.EVENT_BUS.addListener(CharacterCommands::register);
+        MinecraftForge.EVENT_BUS.addListener(EquipmentNetwork::playerLoggedOut);
+        MinecraftForge.EVENT_BUS.addListener(NeedsNotNecessitiesSourceBridge::serverStarted);
+        MinecraftForge.EVENT_BUS.addListener(PufferfishSkillsSourceBridge::serverStarted);
     }
 
     public static ResourceLocation id(String path) {
-        return ResourceLocation.fromNamespaceAndPath(MOD_ID, path);
+        return new ResourceLocation(MOD_ID, path);
     }
 }

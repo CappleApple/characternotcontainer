@@ -9,7 +9,6 @@ import com.cappleapple.characternotcontainer.equipment.VanillaEquipmentTarget;
 import com.cappleapple.characternotcontainer.network.EquipmentChangePayload;
 import com.cappleapple.characternotcontainer.network.NearbyEquipmentRequestPayload;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -23,10 +22,10 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
-import net.neoforged.fml.ModList;
-import net.neoforged.neoforge.gametest.GameTestHolder;
-import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
-import net.neoforged.neoforge.items.ItemStackHandler;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
+import net.minecraftforge.items.ItemStackHandler;
 import top.theillusivec4.curios.api.CuriosApi;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -34,10 +33,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 @PrefixGameTestTemplate(false)
 @SuppressWarnings("removal")
 public final class RelicResearchGameTests {
-    private static final String TEMPLATE = "bastion/mobs/empty";
+    private static final String TEMPLATE = "empty";
     private RelicResearchGameTests() {}
 
-    @GameTest(templateNamespace = "minecraft", template = TEMPLATE)
+    @GameTest(templateNamespace = CharacterNotContainer.MOD_ID, template = TEMPLATE)
     public static void liveInventorySlotCannotBeTakenOrReplaced(GameTestHelper helper) {
         ServerPlayer player = GameTestPlayers.create(helper);
         ItemStackHandler inventory = new ItemStackHandler(1);
@@ -50,20 +49,20 @@ public final class RelicResearchGameTests {
         menu.clicked(0, 0, ClickType.PICKUP, player);
         menu.quickMoveStack(player, 0);
         helper.assertTrue(inventory.getStackInSlot(0) == original && menu.getCarried().isEmpty(), "Research moved an item");
-        menu.getSlot(0).getItem().set(DataComponents.CUSTOM_NAME, Component.literal("Researched"));
+        menu.getSlot(0).getItem().setHoverName(Component.literal("Researched"));
         menu.broadcastChanges();
-        helper.assertTrue(saves.get() == 1 && original.has(DataComponents.CUSTOM_NAME), "Research changes were not saved");
+        helper.assertTrue(saves.get() == 1 && original.hasCustomHoverName(), "Research changes were not saved");
         inventory.setStackInSlot(0, new ItemStack(Items.IRON_BOOTS));
         helper.assertTrue(!menu.stillValid(player) && menu.getSlot(0).getItem().isEmpty(), "Research followed a replacement item");
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = "minecraft", template = TEMPLATE)
+    @GameTest(templateNamespace = CharacterNotContainer.MOD_ID, template = TEMPLATE)
     public static void equippedRelicKeepsNativeDataChanges(GameTestHelper helper) throws Exception {
         ServerPlayer player = GameTestPlayers.create(helper);
         ItemStack stack = new ItemStack(Items.IRON_BOOTS);
         if (ModList.get().isLoaded("relics")) {
-            stack = new ItemStack(BuiltInRegistries.ITEM.get(ResourceLocation.parse("relics:roller_skates")));
+            stack = new ItemStack(BuiltInRegistries.ITEM.get(new ResourceLocation("relics:roller_skates")));
             helper.assertTrue(RelicsIntegration.isRelic(stack), "Installed Relics item was not recognized");
         }
         player.setItemSlot(EquipmentSlot.FEET, stack);
@@ -72,36 +71,21 @@ public final class RelicResearchGameTests {
         helper.assertTrue(menu.getSlot(0).getItem() == player.getItemBySlot(EquipmentSlot.FEET), "Equipped slot used a copy");
         if (ModList.get().isLoaded("relics")) {
             Class<?> api = Class.forName("it.hurts.sskirillss.relics.items.relics.base.IRelicItem");
-            api.getMethod("setRelicExperience", ItemStack.class, int.class).invoke(stack.getItem(), menu.getSlot(0).getItem(), 7);
+            api.getMethod("setExperience", ItemStack.class, int.class).invoke(stack.getItem(), menu.getSlot(0).getItem(), 7);
             menu.broadcastChanges();
-            helper.assertTrue((int)api.getMethod("getRelicExperience", ItemStack.class).invoke(stack.getItem(),
+            helper.assertTrue((int)api.getMethod("getExperience", ItemStack.class).invoke(stack.getItem(),
                     player.getItemBySlot(EquipmentSlot.FEET)) == 7, "Native Relics data did not reach the equipped item");
         }
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = "minecraft", template = TEMPLATE)
+    @GameTest(templateNamespace = CharacterNotContainer.MOD_ID, template = TEMPLATE)
     public static void equippedCuriosUseTheirOriginalSlot(GameTestHelper helper) {
-        if (ModList.get().isLoaded("curios")) {
-            ServerPlayer player = GameTestPlayers.create(helper);
-            var curios = CuriosApi.getCuriosInventory(player).orElseThrow();
-            var entry = curios.getCurios().entrySet().stream().filter(value -> value.getValue().getSlots() > 0).findFirst().orElseThrow();
-            ItemStack stack = new ItemStack(Items.DIAMOND);
-            entry.getValue().getStacks().setStackInSlot(0, stack);
-            var request = new EquipmentChangePayload(EquipmentChangePayload.TargetSystem.CURIOS, entry.getKey(), 0,
-                    false, EquipmentChangePayload.SourceKind.UNEQUIP, -1, 0);
-            RelicResearchMenu menu = new RelicResearchMenu(1, CuriosEquipmentMutator.resolve(player, request)
-                    .orElseThrow().researchSource().orElseThrow());
-            helper.assertTrue(menu.getSlot(0).getItem() == stack, "Curios research used a presentation copy");
-            menu.getSlot(0).getItem().set(DataComponents.CUSTOM_NAME, Component.literal("Researched"));
-            menu.broadcastChanges();
-            helper.assertTrue(entry.getValue().getStacks().getStackInSlot(0).has(DataComponents.CUSTOM_NAME), "Curios changes were lost");
-            helper.assertTrue(menu.stillValid(player), "Curios save invalidated its own research slot");
-        }
+        if (ModList.get().isLoaded("curios")) CuriosTestAccess.verifyOriginalSlot(helper);
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = "minecraft", template = TEMPLATE)
+    @GameTest(templateNamespace = CharacterNotContainer.MOD_ID, template = TEMPLATE)
     public static void nearbyResearchRequiresCurrentSearchAndRange(GameTestHelper helper) {
         ServerPlayer player = GameTestPlayers.create(helper);
         BlockPos pos = player.blockPosition().offset(1, 0, 0);
@@ -124,9 +108,9 @@ public final class RelicResearchGameTests {
                 RelicResearchMenu menu = new RelicResearchMenu(1, source);
                 ItemStack live = candidate.stack().is(Items.IRON_BOOTS) ? chest.getItem(0) : stand.getItemBySlot(EquipmentSlot.FEET);
                 helper.assertTrue(menu.getSlot(0).getItem() == live, "Nearby source returned a copy");
-                menu.getSlot(0).getItem().set(DataComponents.CUSTOM_NAME, Component.literal("Researched"));
+                menu.getSlot(0).getItem().setHoverName(Component.literal("Researched"));
                 menu.broadcastChanges();
-                helper.assertTrue(live.has(DataComponents.CUSTOM_NAME), "Nearby changes were lost");
+                helper.assertTrue(live.hasCustomHoverName(), "Nearby changes were lost");
                 double x = player.getX();
                 player.setPos(x + 100, player.getY(), player.getZ());
                 helper.assertTrue(!menu.stillValid(player) && menu.getSlot(0).getItem().isEmpty(), "Out-of-range research stayed accessible");
@@ -144,5 +128,32 @@ public final class RelicResearchGameTests {
 
     private static EquipmentChangePayload target(EquipmentChangePayload.SourceKind kind, int index, int searchId) {
         return new EquipmentChangePayload(EquipmentChangePayload.TargetSystem.VANILLA, "feet", 0, false, kind, index, searchId);
+    }
+
+    // Keep Curios-typed lambda signatures out of the class Forge scans for test methods.
+    private static final class CuriosTestAccess {
+        private static void verifyOriginalSlot(GameTestHelper helper) {
+            ServerPlayer player = GameTestPlayers.create(helper);
+            var curios = CuriosApi.getCuriosInventory(player).resolve().orElseThrow();
+            if (curios.getCurios().values().stream().noneMatch(handler -> handler.getSlots() > 0)) {
+                var slots = new java.util.LinkedHashMap<>(curios.getCurios());
+                slots.put("curio", new top.theillusivec4.curios.common.inventory.CurioStacksHandler(
+                        curios, "curio", 1, true, true, true,
+                        top.theillusivec4.curios.api.type.capability.ICurio.DropRule.DEFAULT));
+                curios.setCurios(slots);
+            }
+            var entry = curios.getCurios().entrySet().stream().filter(value -> value.getValue().getSlots() > 0).findFirst().orElseThrow();
+            ItemStack stack = new ItemStack(Items.DIAMOND);
+            entry.getValue().getStacks().setStackInSlot(0, stack);
+            var request = new EquipmentChangePayload(EquipmentChangePayload.TargetSystem.CURIOS, entry.getKey(), 0,
+                    false, EquipmentChangePayload.SourceKind.UNEQUIP, -1, 0);
+            RelicResearchMenu menu = new RelicResearchMenu(1, CuriosEquipmentMutator.resolve(player, request)
+                    .orElseThrow().researchSource().orElseThrow());
+            helper.assertTrue(menu.getSlot(0).getItem() == stack, "Curios research used a presentation copy");
+            menu.getSlot(0).getItem().setHoverName(Component.literal("Researched"));
+            menu.broadcastChanges();
+            helper.assertTrue(entry.getValue().getStacks().getStackInSlot(0).hasCustomHoverName(), "Curios changes were lost");
+            helper.assertTrue(menu.stillValid(player), "Curios save invalidated its own research slot");
+        }
     }
 }

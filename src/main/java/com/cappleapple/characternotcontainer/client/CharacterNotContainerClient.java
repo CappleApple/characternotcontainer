@@ -1,7 +1,9 @@
 package com.cappleapple.characternotcontainer.client;
 
 import com.cappleapple.characternotcontainer.compat.relics.RelicResearchMenu;
-import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraft.client.gui.screens.MenuScreens;
 import com.cappleapple.characternotcontainer.CharacterNotContainer;
 import com.cappleapple.characternotcontainer.config.CharacterConfigManager;
 import net.minecraft.client.Minecraft;
@@ -13,36 +15,34 @@ import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.EventPriority;
-import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
-import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
-import net.neoforged.neoforge.client.event.ScreenEvent;
-import net.neoforged.neoforge.common.NeoForge;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.eventbus.api.EventPriority;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
+import net.minecraftforge.client.event.ScreenEvent;
+import net.minecraftforge.common.MinecraftForge;
 
-@Mod(value = CharacterNotContainer.MOD_ID, dist = Dist.CLIENT)
+@Mod.EventBusSubscriber(modid = CharacterNotContainer.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.MOD)
 
 public final class CharacterNotContainerClient {
     private static boolean discoverAttributes;
     private static int discoveryDelay;
 
-    public CharacterNotContainerClient(net.neoforged.bus.api.IEventBus modBus, ModContainer container) {
-        modBus.addListener(ClientKeyMappings::register);
-        modBus.addListener((RegisterMenuScreensEvent event) ->
-                event.register(RelicResearchMenu.TYPE.get(), RelicResearchScreen::new));
-        modBus.addListener(CharacterNotContainerClient::registerReloadListener);
-        NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::clientTick);
-        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, RelicResearchScreen::closeMenuOnReturn);
-        NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::redirectCuriosInventoryButton);
-        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, CharacterNotContainerClient::openCharacterFromInventory);
-        NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::playerLoggedIn);
-        NeoForge.EVENT_BUS.addListener(CharacterNotContainerClient::playerLoggedOut);
+    @SubscribeEvent
+    public static void setup(FMLClientSetupEvent event) {
+        event.enqueueWork(() -> MenuScreens.register(RelicResearchMenu.TYPE.get(), RelicResearchScreen::new));
+        MinecraftForge.EVENT_BUS.addListener(CharacterNotContainerClient::clientTick);
+        MinecraftForge.EVENT_BUS.addListener(EventPriority.LOWEST, RelicResearchScreen::closeMenuOnReturn);
+        MinecraftForge.EVENT_BUS.addListener(CharacterNotContainerClient::redirectCuriosInventoryButton);
+        MinecraftForge.EVENT_BUS.addListener(EventPriority.LOWEST, CharacterNotContainerClient::openCharacterFromInventory);
+        MinecraftForge.EVENT_BUS.addListener(CharacterNotContainerClient::playerLoggedIn);
+        MinecraftForge.EVENT_BUS.addListener(CharacterNotContainerClient::playerLoggedOut);
     }
 
-    private static void clientTick(ClientTickEvent.Post event) {
+    private static void clientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
         if (discoverAttributes && discoveryDelay-- <= 0) discoverPlayerAttributes();
         if (CharacterConfigManager.general().enableSeparateKeybind) {
             while (ClientKeyMappings.OPEN_CHARACTER.consumeClick()) openCharacterScreen();
@@ -59,8 +59,10 @@ public final class CharacterNotContainerClient {
         discoveryDelay = 0;
     }
 
-    private static void registerReloadListener(RegisterClientReloadListenersEvent event) {
+    @SubscribeEvent
+    public static void registerReloadListener(RegisterClientReloadListenersEvent event) {
         event.registerReloadListener((ResourceManagerReloadListener)resourceManager -> {
+            GuiSpriteRenderer.clear();
             CharacterConfigManager.load();
             scheduleAttributeDiscovery();
         });
@@ -77,7 +79,7 @@ public final class CharacterNotContainerClient {
         discoverAttributes = false;
         var ids = BuiltInRegistries.ATTRIBUTE.holders()
                 .filter(holder -> holder.value().isClientSyncable())
-                .filter(holder -> minecraft.player.getAttributes().hasAttribute(holder))
+                .filter(holder -> minecraft.player.getAttributes().hasAttribute(holder.value()))
                 .map(holder -> BuiltInRegistries.ATTRIBUTE.getKey(holder.value()))
                 .filter(java.util.Objects::nonNull)
                 .map(Object::toString)

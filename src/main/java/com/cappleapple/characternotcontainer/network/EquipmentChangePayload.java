@@ -1,24 +1,22 @@
 package com.cappleapple.characternotcontainer.network;
 
 import com.cappleapple.characternotcontainer.CharacterNotContainer;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.FriendlyByteBuf;
 
 public record EquipmentChangePayload(TargetSystem system, String slotId, int slotIndex, boolean cosmetic,
                                      SourceKind sourceKind, int sourceIndex, int searchId)
-        implements CustomPacketPayload {
-    public static final Type<EquipmentChangePayload> TYPE = new Type<>(CharacterNotContainer.id("equipment_change"));
-    public static final StreamCodec<RegistryFriendlyByteBuf, EquipmentChangePayload> STREAM_CODEC = new StreamCodec<>() {
+         {
+    public static final net.minecraft.resources.ResourceLocation TYPE = CharacterNotContainer.id("equipment_change");
+    public static final PacketCodec<EquipmentChangePayload> STREAM_CODEC = new PacketCodec<>() {
         @Override
-        public EquipmentChangePayload decode(RegistryFriendlyByteBuf buffer) {
+        public EquipmentChangePayload decode(FriendlyByteBuf buffer) {
             return new EquipmentChangePayload(buffer.readEnum(TargetSystem.class), buffer.readUtf(64),
                     buffer.readVarInt(), buffer.readBoolean(), buffer.readEnum(SourceKind.class),
                     buffer.readVarInt(), buffer.readVarInt());
         }
 
         @Override
-        public void encode(RegistryFriendlyByteBuf buffer, EquipmentChangePayload payload) {
+        public void encode(FriendlyByteBuf buffer, EquipmentChangePayload payload) {
             buffer.writeEnum(payload.system);
             buffer.writeUtf(payload.slotId, 64);
             buffer.writeVarInt(payload.slotIndex);
@@ -28,9 +26,6 @@ public record EquipmentChangePayload(TargetSystem system, String slotId, int slo
             buffer.writeVarInt(payload.searchId);
         }
     };
-
-    @Override
-    public Type<? extends CustomPacketPayload> type() { return TYPE; }
 
     public enum TargetSystem { VANILLA, CURIOS }
 

@@ -2,11 +2,8 @@ package com.cappleapple.characternotcontainer.client;
 
 import com.cappleapple.characternotcontainer.network.RelicResearchPayload;
 import com.cappleapple.characternotcontainer.compat.relics.RelicsIntegration;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
-import com.mojang.serialization.JsonOps;
 import com.cappleapple.characternotcontainer.config.CharacterConfigManager;
 import com.cappleapple.characternotcontainer.config.StatDefinition;
 import com.cappleapple.characternotcontainer.CharacterNotContainer;
@@ -29,14 +26,10 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.gui.screens.inventory.tooltip.TooltipRenderUtil;
-import net.minecraft.core.Holder;
-import net.minecraft.core.component.TypedDataComponent;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -44,10 +37,9 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.neoforged.fml.ModList;
-import net.neoforged.neoforge.items.IItemHandler;
-import net.neoforged.neoforge.network.PacketDistributor;
-import net.neoforged.neoforge.network.registration.NetworkRegistry;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.items.IItemHandler;
+import com.cappleapple.characternotcontainer.network.EquipmentNetwork;
 import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
@@ -61,7 +53,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Consumer;
 
 public final class CharacterEquipmentScreen extends Screen {
     private static final int PANEL = 0xE7181C21;
@@ -73,7 +64,7 @@ public final class CharacterEquipmentScreen extends Screen {
     private static final int COSMETIC_CURIO_SLOT_BACKGROUND = 0xD04B2D63;
     private static final int COSMETIC_CURIO_SLOT_BORDER = 0xD09D70B5;
     private static final ResourceLocation CURIOS_INVENTORY_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath("curios", "textures/gui/curios/inventory.png");
+            new ResourceLocation("curios", "textures/gui/curios/inventory.png");
     private static final CuriosClientIntegration CURIOS = loadCurios();
     private static final int SCREEN_WIDTH = 400;
     private static final int SCREEN_HEIGHT = 320;
@@ -159,12 +150,12 @@ public final class CharacterEquipmentScreen extends Screen {
         if (!ItemStack.isSameItem(stack, researchStack) || stack.getCount() != researchStack.getCount()) researchHold.tick(null, false);
         researchStack = stack.copy();
         if (researchHold.tick(hovered == null ? null : hovered.target(), RelicsResearchClient.isHeld())) {
-            PacketDistributor.sendToServer(hovered);
+            EquipmentNetwork.sendToServer(hovered);
         }
     }
 
     private RelicResearchPayload researchTarget(double mouseX, double mouseY) {
-        if (!serverSupports(RelicResearchPayload.TYPE.id())) return null;
+        if (!serverSupports(RelicResearchPayload.TYPE)) return null;
         PickerTarget target = picker;
         ItemStack stack;
         EquipmentChangePayload.SourceKind kind = EquipmentChangePayload.SourceKind.UNEQUIP;
@@ -195,8 +186,8 @@ public final class CharacterEquipmentScreen extends Screen {
     }
 
     private void requestModifierSources() {
-        if (serverSupports(ModifierSourcesRequestPayload.TYPE.id())) {
-            PacketDistributor.sendToServer(ModifierSourcesRequestPayload.INSTANCE);
+        if (serverSupports(ModifierSourcesRequestPayload.TYPE)) {
+            EquipmentNetwork.sendToServer(ModifierSourcesRequestPayload.INSTANCE);
         }
     }
 
@@ -267,7 +258,15 @@ public final class CharacterEquipmentScreen extends Screen {
 
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
-        compositeTarget.blitToScreen(mainTarget.width, mainTarget.height, false);
+        // In 1.20.1 this blit replaces the GUI projection with framebuffer pixel
+        // coordinates. Restore it before drawing the stats and equipment controls.
+        var projection = new org.joml.Matrix4f(RenderSystem.getProjectionMatrix());
+        var sorting = RenderSystem.getVertexSorting();
+        try {
+            compositeTarget.blitToScreen(mainTarget.width, mainTarget.height, false);
+        } finally {
+            RenderSystem.setProjectionMatrix(projection, sorting);
+        }
         RenderSystem.disableBlend();
         RenderSystem.enableDepthTest();
         RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
@@ -315,9 +314,9 @@ public final class CharacterEquipmentScreen extends Screen {
         float verticalAngle = (float)Math.atan((lookOriginY - mouseY) / sensitivity);
         graphics.enableScissor(preview.x(), preview.y(), preview.x() + preview.width(), preview.y() + preview.height());
         try {
-            InventoryScreen.renderEntityInInventoryFollowsAngle(graphics, preview.x(), preview.y(),
-                    preview.x() + preview.width(), preview.y() + preview.height(), entityScale, 0.0625F,
-                    horizontalAngle, verticalAngle, player);
+            InventoryScreen.renderEntityInInventoryFollowsMouse(graphics,
+                    preview.x() + preview.width() / 2, preview.y() + preview.height() - 12, entityScale,
+                    (float)Math.tan(horizontalAngle) * 40.0F, (float)Math.tan(verticalAngle) * 40.0F, player);
             graphics.flush();
         } finally {
             graphics.disableScissor();
@@ -577,10 +576,10 @@ public final class CharacterEquipmentScreen extends Screen {
     }
 
     private ChangedStat changedStat(ResolvedStat stat, AttributeInstance instance, boolean includeEquipmentFallback) {
-        Map<ResourceLocation, AttributeModifier> modifiers = new LinkedHashMap<>();
-        instance.getModifiers().forEach(modifier -> modifiers.put(modifier.id(), modifier));
+        Map<java.util.UUID, AttributeModifier> modifiers = new LinkedHashMap<>();
+        instance.getModifiers().forEach(modifier -> modifiers.put(modifier.getId(), modifier));
         if (includeEquipmentFallback && Math.abs(instance.getValue() - instance.getBaseValue()) <= 0.0000001D) {
-            vanillaEquipmentContributions(stat).forEach(contribution -> modifiers.putIfAbsent(contribution.modifier.id(), contribution.modifier));
+            vanillaEquipmentContributions(stat).forEach(contribution -> modifiers.putIfAbsent(contribution.modifier.getId(), contribution.modifier));
         }
         double current = modifiers.size() == instance.getModifiers().size()
                 ? instance.getValue() : AttributeValueCalculator.calculate(instance, modifiers.values());
@@ -592,11 +591,6 @@ public final class CharacterEquipmentScreen extends Screen {
         AttributeInstance instance = player.getAttribute(stat.attribute());
         if (CURIOS != null) CURIOS.contributions(player, stat.attribute())
                 .forEach(contribution -> addContribution(result, contribution.stack(), contribution.modifier()));
-        if (instance != null) {
-            for (CuriosClientIntegration.CurioSlotView slot : functionalCuriosSlots) {
-                if (!slot.stack().isEmpty()) addComponentContributions(result, slot.stack(), stat.attribute(), instance);
-            }
-        }
         return result;
     }
 
@@ -606,7 +600,7 @@ public final class CharacterEquipmentScreen extends Screen {
                 EquipmentSlot.FEET, EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND)) {
             ItemStack stack = player.getItemBySlot(slot);
             if (stack.isEmpty()) continue;
-            stack.forEachModifier(slot, (attribute, modifier) -> {
+            stack.getAttributeModifiers(slot).forEach((attribute, modifier) -> {
                 if (attribute.equals(stat.attribute())) addContribution(result, stack, modifier);
             });
         }
@@ -614,47 +608,9 @@ public final class CharacterEquipmentScreen extends Screen {
     }
 
     private static void addContribution(List<Contribution> result, ItemStack stack, AttributeModifier modifier) {
-        boolean duplicate = result.stream().anyMatch(existing -> existing.modifier.id().equals(modifier.id())
-                && ItemStack.isSameItemSameComponents(existing.stack, stack));
+        boolean duplicate = result.stream().anyMatch(existing -> existing.modifier.getId().equals(modifier.getId())
+                && ItemStack.isSameItemSameTags(existing.stack, stack));
         if (!duplicate) result.add(new Contribution(stack.copy(), modifier));
-    }
-
-    private void addComponentContributions(List<Contribution> result, ItemStack stack, Holder<Attribute> attribute,
-                                           AttributeInstance instance) {
-        ResourceLocation attributeId = BuiltInRegistries.ATTRIBUTE.getKey(attribute.value());
-        if (attributeId == null) return;
-        RegistryOps<JsonElement> ops = player.registryAccess().createSerializationContext(JsonOps.INSTANCE);
-        for (TypedDataComponent<?> component : stack.getComponents()) {
-            component.encodeValue(ops).result().ifPresent(encoded -> collectModifierIds(encoded, attributeId.toString(), modifierId -> {
-                AttributeModifier activeModifier = instance.getModifier(modifierId);
-                if (activeModifier != null) addContribution(result, stack, activeModifier);
-            }));
-        }
-    }
-
-    private static void collectModifierIds(JsonElement element, String attributeId, Consumer<ResourceLocation> consumer) {
-        if (element.isJsonArray()) {
-            element.getAsJsonArray().forEach(child -> collectModifierIds(child, attributeId, consumer));
-            return;
-        }
-        if (!element.isJsonObject()) return;
-        JsonObject object = element.getAsJsonObject();
-        String encodedAttribute = stringProperty(object, "attribute");
-        if (encodedAttribute == null) encodedAttribute = stringProperty(object, "type");
-        if (attributeId.equals(encodedAttribute)) {
-            String modifierId = stringProperty(object, "id");
-            if (modifierId == null && object.has("modifier") && object.get("modifier").isJsonObject()) {
-                modifierId = stringProperty(object.getAsJsonObject("modifier"), "id");
-            }
-            ResourceLocation parsed = modifierId == null ? null : ResourceLocation.tryParse(modifierId);
-            if (parsed != null) consumer.accept(parsed);
-        }
-        object.entrySet().forEach(entry -> collectModifierIds(entry.getValue(), attributeId, consumer));
-    }
-
-    private static String stringProperty(JsonObject object, String name) {
-        JsonElement value = object.get(name);
-        return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() ? value.getAsString() : null;
     }
 
     private List<SourceTooltipLine> modifierSources(ChangedStat changed) {
@@ -672,34 +628,34 @@ public final class CharacterEquipmentScreen extends Screen {
                         "gui.characternotcontainer.heavy_hit_resistance", values.heavyHitResistance()));
             }
         });
-        Set<ResourceLocation> explained = new HashSet<>();
+        Set<java.util.UUID> explained = new HashSet<>();
         for (Contribution contribution : equipmentContributions(stat)) {
-            AttributeModifier active = changed.modifiers.get(contribution.modifier.id());
+            AttributeModifier active = changed.modifiers.get(contribution.modifier.getId());
             if (active != null) {
                 addSource(lines, contribution.stack.copy(), sourceWithAmount(
                         contribution.stack.getHoverName(), active, stat.definition(), instance));
-                explained.add(active.id());
+                explained.add(active.getId());
             }
         }
 
         for (var effectInstance : player.getActiveEffects()) {
-            effectInstance.getEffect().value().createModifiers(effectInstance.getAmplifier(), (attribute, modifier) -> {
-                AttributeModifier active = changed.modifiers.get(modifier.id());
+            effectInstance.getEffect().getAttributeModifiers().forEach((attribute, modifier) -> {
+                AttributeModifier active = changed.modifiers.get(modifier.getId());
                 if (attribute.equals(stat.attribute()) && active != null) {
                     addSource(lines, ItemStack.EMPTY, sourceWithAmount(
-                            effectInstance.getEffect().value().getDisplayName(), active, stat.definition(), instance));
-                    explained.add(active.id());
+                            effectInstance.getEffect().getDisplayName(), active, stat.definition(), instance));
+                    explained.add(active.getId());
                 }
             });
         }
 
-        ResourceLocation attributeId = BuiltInRegistries.ATTRIBUTE.getKey(stat.attribute().value());
+        ResourceLocation attributeId = BuiltInRegistries.ATTRIBUTE.getKey(stat.attribute());
         if (attributeId != null) {
             Map<String, GroupedModifierSource> groupedSources = new LinkedHashMap<>();
             for (AttributeModifier modifier : changed.modifiers.values()) {
-                if (explained.contains(modifier.id())) continue;
+                if (explained.contains(modifier.getId())) continue;
                 List<ModifierSourcesResponsePayload.Source> hints = modifierSourceHints.getOrDefault(
-                        new ModifierKey(attributeId, modifier.id()), List.of());
+                        new ModifierKey(attributeId, modifier.getId()), List.of());
                 boolean identified = false;
                 for (ModifierSourcesResponsePayload.Source source : hints) {
                     Component name = sourceName(source);
@@ -715,7 +671,7 @@ public final class CharacterEquipmentScreen extends Screen {
                         identified = true;
                     }
                 }
-                if (identified) explained.add(modifier.id());
+                if (identified) explained.add(modifier.getId());
             }
             for (GroupedModifierSource group : groupedSources.values()) {
                 Component name = sourceName(group.source);
@@ -731,7 +687,7 @@ public final class CharacterEquipmentScreen extends Screen {
 
     private static void addSource(List<SourceTooltipLine> lines, ItemStack stack, Component text) {
         boolean duplicate = lines.stream().anyMatch(line -> line.text.getString().equals(text.getString())
-                && (stack.isEmpty() && line.stack.isEmpty() || ItemStack.isSameItemSameComponents(stack, line.stack)));
+                && (stack.isEmpty() && line.stack.isEmpty() || ItemStack.isSameItemSameTags(stack, line.stack)));
         if (!duplicate) lines.add(new SourceTooltipLine(stack, text));
     }
 
@@ -750,14 +706,14 @@ public final class CharacterEquipmentScreen extends Screen {
 
     private static Component modifierAmount(AttributeModifier modifier, StatDefinition definition,
                                             AttributeInstance instance) {
-        double displayedAmount = modifier.operation() == AttributeModifier.Operation.ADD_VALUE
+        double displayedAmount = modifier.getOperation() == AttributeModifier.Operation.ADDITION
                 ? AttributeValueCalculator.standaloneAddValue(instance, modifier)
-                : modifier.amount();
-        Component value = switch (modifier.operation()) {
-            case ADD_VALUE -> Component.literal(signed(definition.effectiveFormat().format(displayedAmount, definition),
+                : modifier.getAmount();
+        Component value = switch (modifier.getOperation()) {
+            case ADDITION -> Component.literal(signed(definition.effectiveFormat().format(displayedAmount, definition),
                     displayedAmount));
-            case ADD_MULTIPLIED_BASE, ADD_MULTIPLIED_TOTAL -> percentageModifierAmount(
-                    modifier.operation(), modifier.amount());
+            case MULTIPLY_BASE, MULTIPLY_TOTAL -> percentageModifierAmount(
+                    modifier.getOperation(), modifier.getAmount());
         };
         return value.copy().withStyle(displayedAmount < 0.0D ? ChatFormatting.RED : ChatFormatting.GREEN);
     }
@@ -765,16 +721,16 @@ public final class CharacterEquipmentScreen extends Screen {
     static Component groupedModifierAmount(List<AttributeModifier> modifiers, StatDefinition definition,
                                            AttributeInstance instance) {
         if (modifiers.isEmpty()) return Component.empty();
-        AttributeModifier.Operation operation = modifiers.getFirst().operation();
-        boolean sameOperation = modifiers.stream().allMatch(modifier -> modifier.operation() == operation);
+        AttributeModifier.Operation operation = modifiers.get(0).getOperation();
+        boolean sameOperation = modifiers.stream().allMatch(modifier -> modifier.getOperation() == operation);
         double displayedAmount;
         Component value;
-        if (sameOperation && operation == AttributeModifier.Operation.ADD_MULTIPLIED_BASE) {
-            displayedAmount = modifiers.stream().mapToDouble(AttributeModifier::amount).sum();
+        if (sameOperation && operation == AttributeModifier.Operation.MULTIPLY_BASE) {
+            displayedAmount = modifiers.stream().mapToDouble(AttributeModifier::getAmount).sum();
             value = percentageModifierAmount(operation, displayedAmount);
-        } else if (sameOperation && operation == AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL) {
+        } else if (sameOperation && operation == AttributeModifier.Operation.MULTIPLY_TOTAL) {
             displayedAmount = modifiers.stream()
-                    .mapToDouble(modifier -> 1.0D + modifier.amount())
+                    .mapToDouble(modifier -> 1.0D + modifier.getAmount())
                     .reduce(1.0D, (left, right) -> left * right) - 1.0D;
             value = percentageModifierAmount(operation, displayedAmount);
         } else {
@@ -787,20 +743,20 @@ public final class CharacterEquipmentScreen extends Screen {
     }
 
     private static void addUnknownRemainder(List<SourceTooltipLine> lines, ChangedStat changed,
-                                            Set<ResourceLocation> explained, AttributeInstance instance) {
+                                            Set<java.util.UUID> explained, AttributeInstance instance) {
         List<AttributeModifier> unknown = changed.modifiers.values().stream()
-                .filter(modifier -> !explained.contains(modifier.id()))
+                .filter(modifier -> !explained.contains(modifier.getId()))
                 .toList();
         if (unknown.isEmpty()) return;
         List<AttributeModifier> known = changed.modifiers.values().stream()
-                .filter(modifier -> explained.contains(modifier.id()))
+                .filter(modifier -> explained.contains(modifier.getId()))
                 .toList();
         double knownValue = AttributeValueCalculator.calculate(instance, known);
         double difference = changed.current - knownValue;
         if (Math.abs(difference) <= 0.0000001D) return;
 
         boolean onlyMultiplicative = unknown.stream()
-                .allMatch(modifier -> modifier.operation() != AttributeModifier.Operation.ADD_VALUE);
+                .allMatch(modifier -> modifier.getOperation() != AttributeModifier.Operation.ADDITION);
         String amount = onlyMultiplicative && Math.abs(knownValue) > 0.0000001D
                 ? signedPercent(changed.current / knownValue - 1.0D)
                 : signed(changed.stat.definition().effectiveFormat().format(difference, changed.stat.definition()), difference);
@@ -834,7 +790,7 @@ public final class CharacterEquipmentScreen extends Screen {
 
     static Component percentageModifierAmount(AttributeModifier.Operation operation, double value) {
         String percentage = signedPercent(value);
-        return operation == AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL
+        return operation == AttributeModifier.Operation.MULTIPLY_TOTAL
                 ? Component.translatable("gui.characternotcontainer.stacking", percentage)
                 : Component.literal(percentage);
     }
@@ -843,7 +799,7 @@ public final class CharacterEquipmentScreen extends Screen {
         StatDefinition definition = stat.definition();
         ResourceLocation icon = definition.icon == null || definition.icon.isBlank() ? null : ResourceLocation.tryParse(definition.icon);
         if (icon != null) {
-            graphics.blitSprite(icon, x, y, 16, 16);
+            GuiSpriteRenderer.blit(graphics, icon, x, y, 16, 16);
             return;
         }
         if (blitOptionalSprite(graphics, CharacterGuiSprites.STATS_FALLBACK_ICON,
@@ -1012,7 +968,7 @@ public final class CharacterEquipmentScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
         if (picker != null && pickerGeometry(candidates(picker).size() + 1).bounds.contains(mouseX, mouseY)) {
             pickerScroll -= (int)Math.signum(scrollY);
             return true;
@@ -1021,7 +977,7 @@ public final class CharacterEquipmentScreen extends Screen {
             statsScroll -= (int)Math.signum(scrollY);
             return true;
         }
-        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        return super.mouseScrolled(mouseX, mouseY, scrollY);
     }
 
     @Override
@@ -1083,11 +1039,11 @@ public final class CharacterEquipmentScreen extends Screen {
 
     private boolean sendChange(PickerTarget target, EquipmentChangePayload.SourceKind sourceKind,
                                int sourceIndex, int searchId) {
-        if (!serverSupports(EquipmentChangePayload.TYPE.id())) {
+        if (!serverSupports(EquipmentChangePayload.TYPE)) {
             player.displayClientMessage(Component.translatable("message.characternotcontainer.server_required"), true);
             return false;
         }
-        PacketDistributor.sendToServer(new EquipmentChangePayload(target.system(), target.slotId(), target.slotIndex(),
+        EquipmentNetwork.sendToServer(new EquipmentChangePayload(target.system(), target.slotId(), target.slotIndex(),
                 target.cosmetic(), sourceKind, sourceIndex, searchId));
         return true;
     }
@@ -1099,8 +1055,8 @@ public final class CharacterEquipmentScreen extends Screen {
         nearbyEquipment = List.of();
         pickerSearchId = pickerSearchId == Integer.MAX_VALUE ? 1 : pickerSearchId + 1;
         if (CharacterConfigManager.general().enableNearbyEquipmentSources
-                && serverSupports(NearbyEquipmentRequestPayload.TYPE.id())) {
-            PacketDistributor.sendToServer(new NearbyEquipmentRequestPayload(pickerSearchId, target.system(),
+                && serverSupports(NearbyEquipmentRequestPayload.TYPE)) {
+            EquipmentNetwork.sendToServer(new NearbyEquipmentRequestPayload(pickerSearchId, target.system(),
                     target.slotId(), target.slotIndex(), target.cosmetic()));
         }
     }
@@ -1114,7 +1070,7 @@ public final class CharacterEquipmentScreen extends Screen {
 
     private boolean serverSupports(ResourceLocation payloadId) {
         return minecraft != null && minecraft.getConnection() != null
-                && NetworkRegistry.hasChannel(minecraft.getConnection(), payloadId);
+                && EquipmentNetwork.CHANNEL.isRemotePresent(minecraft.getConnection().getConnection());
     }
 
     private ScreenRect targetBounds(PickerTarget target, List<PlacedCurio> placements) {
@@ -1175,7 +1131,7 @@ public final class CharacterEquipmentScreen extends Screen {
     }
 
     private static String displayName(ResolvedStat stat) {
-        String translationKey = stat.attribute().value().getDescriptionId();
+        String translationKey = stat.attribute().getDescriptionId();
         return AttributeDisplayName.resolve(stat.definition().name, translationKey, stat.definition().attribute,
                 key -> Component.translatable(key).getString());
     }
@@ -1194,7 +1150,7 @@ public final class CharacterEquipmentScreen extends Screen {
 
     private static boolean blitOptionalSprite(GuiGraphics graphics, ResourceLocation sprite, ScreenRect bounds) {
         if (!hasGuiSprite(sprite)) return false;
-        graphics.blitSprite(sprite, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        GuiSpriteRenderer.blit(graphics, sprite, bounds.x(), bounds.y(), bounds.width(), bounds.height());
         return true;
     }
 
@@ -1218,13 +1174,13 @@ public final class CharacterEquipmentScreen extends Screen {
 
     private static ResourceLocation curioIconTexture(ResourceLocation icon) {
         ResourceLocation logicalIcon = icon == null
-                ? ResourceLocation.fromNamespaceAndPath("curios", "slot/empty_curio_slot") : icon;
+                ? new ResourceLocation("curios", "slot/empty_curio_slot") : icon;
         String path = logicalIcon.getPath();
         if (!path.startsWith("textures/")) path = "textures/" + path;
         if (!path.endsWith(".png")) path += ".png";
-        ResourceLocation texture = ResourceLocation.fromNamespaceAndPath(logicalIcon.getNamespace(), path);
+        ResourceLocation texture = new ResourceLocation(logicalIcon.getNamespace(), path);
         if (Minecraft.getInstance().getResourceManager().getResource(texture).isPresent()) return texture;
-        return ResourceLocation.fromNamespaceAndPath("curios", "textures/slot/empty_curio_slot.png");
+        return new ResourceLocation("curios", "textures/slot/empty_curio_slot.png");
     }
 
     private sealed interface PickerTarget permits VanillaTarget, CurioTarget {
@@ -1278,14 +1234,14 @@ public final class CharacterEquipmentScreen extends Screen {
     private record PickerGeometry(ScreenRect bounds, int startX, int columns, int visibleRows, int totalRows) {}
     private record PickerItemRender(ItemStack stack, int x, int y) {}
     private record ChangedStat(ResolvedStat stat, double base, double current,
-                               Map<ResourceLocation, AttributeModifier> modifiers) {
+                               Map<java.util.UUID, AttributeModifier> modifiers) {
         private ChangedStat {
             modifiers = Map.copyOf(modifiers);
         }
     }
     private record Contribution(ItemStack stack, AttributeModifier modifier) {}
     private record SourceTooltipLine(ItemStack stack, Component text) {}
-    private record ModifierKey(ResourceLocation attributeId, ResourceLocation modifierId) {}
+    private record ModifierKey(ResourceLocation attributeId, java.util.UUID modifierId) {}
 
     private static final class GroupedModifierSource {
         private final ModifierSourcesResponsePayload.Source source;
@@ -1296,7 +1252,7 @@ public final class CharacterEquipmentScreen extends Screen {
         }
 
         private void add(AttributeModifier modifier) {
-            if (modifiers.stream().noneMatch(existing -> existing.id().equals(modifier.id()))) {
+            if (modifiers.stream().noneMatch(existing -> existing.getId().equals(modifier.getId()))) {
                 modifiers.add(modifier);
             }
         }

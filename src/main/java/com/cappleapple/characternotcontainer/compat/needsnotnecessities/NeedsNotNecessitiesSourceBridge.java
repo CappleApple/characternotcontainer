@@ -6,8 +6,8 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.fml.ModList;
-import net.neoforged.neoforge.event.server.ServerStartedEvent;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.event.server.ServerStartedEvent;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -135,7 +135,8 @@ public final class NeedsNotNecessitiesSourceBridge {
                             ItemStack stack, String translationKey, String fallback)
                 throws ReflectiveOperationException {
             for (Object modifier : modifiers) {
-                ResourceLocation id = (ResourceLocation)modifierId.invoke(modifier);
+                Object rawId = modifierId.invoke(modifier);
+                if (!(rawId instanceof java.util.UUID id)) continue;
                 ResourceLocation target = (ResourceLocation)modifierTarget.invoke(modifier);
                 destination.putIfAbsent(new Key(target, id),
                         new ModifierSourcesResponsePayload.Source(stack, translationKey, fallback));
@@ -147,5 +148,5 @@ public final class NeedsNotNecessitiesSourceBridge {
         }
     }
 
-    private record Key(ResourceLocation attributeId, ResourceLocation modifierId) {}
+    private record Key(ResourceLocation attributeId, java.util.UUID modifierId) {}
 }

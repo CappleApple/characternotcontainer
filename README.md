@@ -1,6 +1,6 @@
 # Character Not Container
 
-Character Not Container is a NeoForge 1.21.1 character and equipment screen. It opens independently on a configurable key (default `C`), while Minecraft's `E` inventory remains vanilla. When Curios is installed, its inventory buttons open the character screen by default.
+Character Not Container is a Forge 1.20.1 character and equipment screen. It opens independently on a configurable key (default `C`), while Minecraft's `E` inventory remains vanilla. When Curios is installed, its inventory buttons open the character screen by default.
 
 ## Features
 
@@ -10,15 +10,15 @@ Character Not Container is a NeoForge 1.21.1 character and equipment screen. It 
 * Active meals use the food's item icon and name. Modifiers that cannot be identified are combined into a single `???` remainder rather than attributed incorrectly.
 * Renders the real local player with their skin, armor, animation, render layers, and mouse-driven head/body tracking.
 * Uses broad head, chest, legs, and feet regions on the player model as equipment controls instead of displaying a traditional armor grid.
-* Opens a picker beside the selected equipment region containing compatible items from the player's NeoForge item-handler inventory and nearby equipment sources.
-* Supports nearby armor stands and blocks or entities exposing NeoForge's generic item-handler capability when the mod is installed on the server.
+* Opens a picker beside the selected equipment region containing compatible items from the player's Forge item-handler inventory and nearby equipment sources.
+* Supports nearby armor stands and blocks or entities exposing Forge's generic item-handler capability when the mod is installed on the server.
 * Supports dynamic Curios slots, including multiple slots of the same type and mod-added slot types.
 * Uses Curios' native slot icons and validation.
 * Uses standard item tooltips for equipped armor, Curios, and equipment-picker items, including tooltip content and rendering supplied by other mods.
 * Supports switching between functional and cosmetic Curios equipment directly from the character screen.
 * Keeps every visible Curios slot available in cosmetic mode, using the functional slot when a type has no separate cosmetic storage.
 * Provides Curios-native per-slot character render toggles while viewing cosmetic Curios slots.
-* With Relics installed, hold its configured research key for one second over equipped relics or picker items to open its research interface. Its native tooltip supplies the research-key prompt and animated hold progress. Works with functional and cosmetic Curios and nearby sources, keeps the item in place, and returns to the character screen afterward. Requires Character Not Container 1.3.4 or newer on the server; Relics remains optional.
+* With Relics installed, hold its configured research key for one second over equipped relics or picker items to open its research interface. Its native tooltip supplies the research-key prompt and animated hold progress. Works with functional and cosmetic Curios and nearby sources, keeps the item in place, and returns to the character screen afterward. Requires this Forge port on the server; Relics remains optional.
 * Opens the character screen from the player inventory with the same key without intercepting focused search boxes.
 * Curios is fully optional.
 
@@ -296,10 +296,13 @@ Registry-ID configuration through `stats.json` remains available without requiri
 
 ## Development
 
-Requires Java 21.
+Targets Java 17 and Forge 47.4.10 or newer. Run the Gradle 9 wrapper with Java 21; Gradle automatically provisions the Java 17 toolchain for compilation and game launches.
+
+The installable, SRG-remapped output is `build/libs/characternotcontainer-forge-1.3.8.jar`. JARs in `build/devlibs` are development artifacts.
 
 ```powershell
-.\gradlew.bat test build
+.\gradlew.bat clean test build
+.\gradlew.bat runGameTestServer
 .\gradlew.bat runServer
 .\gradlew.bat runClient
 ```
@@ -312,14 +315,6 @@ Pass:
 
 when launching to test without the optional Curios runtime.
 
-Sophisticated Storage and Sophisticated Core are development-only runtime dependencies. Pass:
-
-```text
--PskipSophisticatedStorageRuntime
-```
-
-to omit both.
-
 For local Needs, Not Necessities integration testing, pass:
 
 ```text
@@ -331,3 +326,13 @@ Armor Damage Scaling can be supplied for local integration testing with:
 ```text
 -ParmorDamageScalingRuntimeJar=<absolute-path-to-jar> -PcupboardRuntimeJar=<absolute-path-to-jar>
 ```
+
+
+Relics 0.8.0.13 can be supplied with `-PrelicsRuntimeJar=<jar>`, `-PoctoLibRuntimeJar=<jar>` and `-ParchitecturyRuntimeJar=<jar>`. Pufferfish Skills 0.18.3 can be supplied with `-PpufferfishSkillsRuntimeJar=<jar>`. Use Forge 1.20.1 artifacts for all local dependency hooks. Curios 5.14.1 is included only in development runs and remains optional for players.
+
+Forge launch data is isolated under `run/forge-client`, `run/forge-server` and `run/forge-gameTestServer`, with a `-standalone` suffix when `-PskipCuriosRuntime` is used. The default attribute catalog uses `forge:block_reach`, `forge:entity_reach` and `forge:step_height_addition`; 1.21-only attributes are omitted. Resource-pack GUI PNG paths stay the same, with stretching, tiling and nine-slice rendering supplied by this port.
+
+The Needs, Not Necessities bridge remains optional and accepts authoritative UUID modifier IDs from a compatible Forge runtime. No Forge version of that mod was included in this port's integration checks.
+
+
+An opt-in client gate is available with `runClient -PclientSmoke` and the same optional dependency arguments. It creates a disposable world, equips an item through the network, captures the character screen, and, when Relics is installed, checks its native research screen and return behavior. Screenshots are saved under `run/forge-client/screenshots`; smoke-test code and GameTest structures are excluded from the release JAR.

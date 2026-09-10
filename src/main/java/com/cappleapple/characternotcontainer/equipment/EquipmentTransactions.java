@@ -1,8 +1,8 @@
 package com.cappleapple.characternotcontainer.equipment;
 
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.items.IItemHandler;
-import net.neoforged.neoforge.items.ItemHandlerHelper;
+import net.minecraftforge.items.IItemHandler;
+import net.minecraftforge.items.ItemHandlerHelper;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -18,7 +18,7 @@ public final class EquipmentTransactions {
         if (simulated.isEmpty()) return false;
 
         ItemStack extracted = inventory.extractItem(sourceIndex, 1, false);
-        if (extracted.isEmpty() || !ItemStack.isSameItemSameComponents(extracted, simulated)) {
+        if (extracted.isEmpty() || !ItemStack.isSameItemSameTags(extracted, simulated)) {
             if (!extracted.isEmpty()) insert(inventory, extracted);
             return false;
         }
